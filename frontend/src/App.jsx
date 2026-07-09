@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, CirclePause, CirclePlay, RotateCcw, Send, Square, UploadCloud } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
 import { api } from './services/api.js';
@@ -322,4 +322,3 @@ function SendNotes() {
     </section>
   );
 }
-
