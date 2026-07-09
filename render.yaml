@@ -17,8 +17,9 @@ services:
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: "0"
 
-  - type: static
+  - type: web
     name: foto-notas-frontend
+    runtime: static
     plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
