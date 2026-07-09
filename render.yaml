@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: foto-notas-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install && npx playwright install --with-deps chromium
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: NOTABE_URL
+        value: https://asin.notabe.com/notes/new
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: "0"
+
+  - type: static
+    name: foto-notas-frontend
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
