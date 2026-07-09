@@ -79,7 +79,7 @@ O banco fica no Neon, entao `DATABASE_URL` deve ser cadastrado como segredo no s
 Configuracao sugerida:
 
 - Root Directory: `backend`
-- Build Command: `npm install && npx playwright install --with-deps chromium`
+- Build Command: `npm install && npx playwright install chromium`
 - Start Command: `npm start`
 - Environment:
   - `DATABASE_URL`: connection string do Neon
@@ -106,8 +106,10 @@ Tambem ha um `render.yaml` para usar como Blueprint. Antes de aplicar no Render,
 O comando de build do backend ja inclui:
 
 ```bash
-npx playwright install --with-deps chromium
+npx playwright install chromium
 ```
+
+No ambiente Node nativo do Render, `npx playwright install --with-deps chromium` pode falhar porque tenta instalar pacotes de sistema com permissao de root. Se o Chromium reclamar de bibliotecas ausentes em runtime, migre o backend para Docker usando uma imagem base oficial do Playwright.
 
 Use tambem:
 
@@ -165,4 +167,3 @@ Depois de autenticar, a automacao tenta salvar cookies em `backend/.playwright-s
 - CFe-SAT sem 44 digitos exige confirmacao manual.
 - Render pode reiniciar servicos gratuitos, perdendo arquivos locais de sessao.
 - A deteccao de sucesso no NotaBe e heuristica; se o site mudar textos, ajuste `backend/src/services/automationRunner.js`.
-

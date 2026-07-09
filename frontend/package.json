@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
@@ -18,4 +21,3 @@
   },
   "devDependencies": {}
 }
-
