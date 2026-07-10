@@ -6,6 +6,11 @@
   text-rendering: optimizeLegibility;
 }
 
+html {
+  width: 100%;
+  overflow-x: hidden;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -13,6 +18,8 @@
 body {
   margin: 0;
   min-width: 320px;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 button,
@@ -63,6 +70,7 @@ button svg {
   width: min(1180px, 100%);
   margin: 0 auto;
   padding: 20px;
+  overflow-x: hidden;
 }
 
 .topbar {
@@ -123,6 +131,7 @@ h2 {
   border: 1px solid #dfe4df;
   border-radius: 8px;
   padding: 18px;
+  min-width: 0;
 }
 
 .capture-layout {
@@ -168,6 +177,7 @@ h2 {
   background: #111611;
   aspect-ratio: 4 / 5;
   position: relative;
+  max-width: 100%;
 }
 
 .crop-stage {
@@ -243,6 +253,17 @@ select {
   padding: 0 12px;
   color: #17201b;
   background: #ffffff;
+}
+
+main,
+section,
+.capture-panel,
+.form-panel,
+.send-layout,
+.dashboard-grid,
+.table-panel,
+.logs-panel {
+  min-width: 0;
 }
 
 .checkbox-line {
@@ -407,7 +428,40 @@ th {
 
 @media (max-width: 520px) {
   .app-shell {
-    padding: 12px;
+    padding: 10px;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .panel {
+    padding: 14px;
+  }
+
+  h1 {
+    font-size: 1.45rem;
+  }
+
+  .tabs {
+    width: 100%;
+  }
+
+  .tabs button {
+    flex: 1 0 auto;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr 44px 44px;
+  }
+
+  .actions button {
+    min-width: 0;
+    padding-inline: 8px;
+  }
+
+  .actions .primary,
+  .actions button:nth-child(2) {
+    width: 100%;
   }
 
   .stats-grid {

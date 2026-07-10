@@ -52,6 +52,7 @@ function CaptureNotes() {
   const [crop, setCrop] = useState({ x: 0.06, y: 0.38, width: 0.88, height: 0.18 });
   const [rotation, setRotation] = useState(0);
   const cropStageRef = useRef(null);
+  const imageRef = useRef(null);
   const dragRef = useRef(null);
 
   function onFileChange(event) {
@@ -83,14 +84,14 @@ function CaptureNotes() {
   }
 
   function startCropDrag(event) {
-    if (!cropStageRef.current) return;
-    const rect = cropStageRef.current.getBoundingClientRect();
+    const imageRect = getDisplayedImageRect();
+    if (!imageRect) return;
     dragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       initialCrop: crop,
-      rect
+      rect: imageRect
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -113,6 +114,46 @@ function CaptureNotes() {
     if (dragRef.current?.pointerId === event.pointerId) {
       dragRef.current = null;
     }
+  }
+
+  function getDisplayedImageRect() {
+    const stage = cropStageRef.current;
+    const image = imageRef.current;
+    if (!stage || !image?.naturalWidth || !image?.naturalHeight) return null;
+
+    const stageRect = stage.getBoundingClientRect();
+    const rotated = rotation % 180 !== 0;
+    const naturalWidth = rotated ? image.naturalHeight : image.naturalWidth;
+    const naturalHeight = rotated ? image.naturalWidth : image.naturalHeight;
+    const scale = Math.min(stageRect.width / naturalWidth, stageRect.height / naturalHeight);
+    const width = naturalWidth * scale;
+    const height = naturalHeight * scale;
+
+    return {
+      left: (stageRect.width - width) / 2,
+      top: (stageRect.height - height) / 2,
+      width,
+      height
+    };
+  }
+
+  function cropStyle() {
+    const rect = getDisplayedImageRect();
+    if (!rect) {
+      return {
+        left: `${crop.x * 100}%`,
+        top: `${crop.y * 100}%`,
+        width: `${crop.width * 100}%`,
+        height: `${crop.height * 100}%`
+      };
+    }
+
+    return {
+      left: `${rect.left + (rect.width * crop.x)}px`,
+      top: `${rect.top + (rect.height * crop.y)}px`,
+      width: `${rect.width * crop.width}px`,
+      height: `${rect.height * crop.height}px`
+    };
   }
 
   async function readNote() {
@@ -253,18 +294,14 @@ function CaptureNotes() {
           <div className="preview-frame">
             <div className="crop-stage" ref={cropStageRef}>
               <img
+                ref={imageRef}
                 src={imageUrl}
                 alt="Preview da nota capturada"
                 style={{ transform: `rotate(${rotation}deg)` }}
               />
               <div
                 className="crop-box"
-                style={{
-                  left: `${crop.x * 100}%`,
-                  top: `${crop.y * 100}%`,
-                  width: `${crop.width * 100}%`,
-                  height: `${crop.height * 100}%`
-                }}
+                style={cropStyle()}
                 onPointerDown={startCropDrag}
                 onPointerMove={moveCrop}
                 onPointerUp={stopCropDrag}
