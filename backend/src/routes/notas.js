@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   createNota,
+  deleteNotSentNotas,
   getNextPendente,
   listNotas,
   statsNotas,
@@ -42,6 +43,15 @@ router.get('/next', async (_req, res, next) => {
   }
 });
 
+router.delete('/not-sent', async (_req, res, next) => {
+  try {
+    const total = await deleteNotSentNotas();
+    res.json({ ok: true, total });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.patch('/:id/status', async (req, res, next) => {
   try {
     res.json(await updateStatus(req.params.id, req.body));
@@ -51,4 +61,3 @@ router.patch('/:id/status', async (req, res, next) => {
 });
 
 export default router;
-

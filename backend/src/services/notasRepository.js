@@ -117,3 +117,11 @@ export async function reprocessErrors() {
   );
   return rowCount;
 }
+
+export async function deleteNotSentNotas() {
+  const { rowCount } = await query(
+    `DELETE FROM notas_fiscais
+     WHERE status IN ('pendente', 'processando', 'erro')`
+  );
+  return rowCount;
+}

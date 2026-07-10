@@ -35,5 +35,6 @@ export const api = {
   pauseAutomation: () => request('/api/automacao/pause', { method: 'POST' }),
   stopAutomation: () => request('/api/automacao/stop', { method: 'POST' }),
   sendNext: () => request('/api/automacao/send-next', { method: 'POST' }),
-  reprocessErrors: () => request('/api/automacao/reprocess-errors', { method: 'POST' })
+  reprocessErrors: () => request('/api/automacao/reprocess-errors', { method: 'POST' }),
+  deleteNotSent: () => request('/api/notas/not-sent', { method: 'DELETE' })
 };

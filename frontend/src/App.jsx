@@ -493,6 +493,12 @@ function SendNotes() {
     }
   }
 
+  async function deleteNotSent() {
+    const ok = window.confirm('Apagar notas pendentes, processando e com erro? As notas enviadas serao mantidas.');
+    if (!ok) return;
+    await runAction(api.deleteNotSent, 'Apagar nao enviadas');
+  }
+
   useEffect(() => {
     refresh().catch((error) => setStatus(error.message));
     const interval = window.setInterval(() => refresh().catch(() => {}), 8000);
@@ -542,6 +548,10 @@ function SendNotes() {
         <button onClick={() => runAction(api.reprocessErrors, 'Reprocessar erros')}>
           <RotateCcw aria-hidden="true" />
           Reprocessar erros
+        </button>
+        <button onClick={deleteNotSent}>
+          <Trash2 aria-hidden="true" />
+          Apagar nao enviadas
         </button>
       </div>
 
