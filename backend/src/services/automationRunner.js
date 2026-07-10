@@ -549,20 +549,16 @@ class AutomationRunner {
   }
 
   async detectResult(page) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const explicitResult = await this.readExplicitNotabeResult(page);
+      if (explicitResult) return explicitResult;
+
+      if (attempt < 7) await page.waitForTimeout(1000);
+    }
+
     const body = await page.locator('body').innerText({ timeout: 8000 }).catch(() => '');
     const lowered = body.toLowerCase();
-    const lines = body
-      .split('\n')
-      .map((item) => item.trim())
-      .filter(Boolean);
-
-    const latestResultLine = lines.find((line) => /^(ok|repetida|erro\s+na\s+leitura)\b/i.test(line));
-    if (latestResultLine) {
-      if (/^erro\s+na\s+leitura\b/i.test(latestResultLine)) {
-        return { status: 'erro', message: latestResultLine.slice(0, 180) };
-      }
-      return { status: 'enviada', message: latestResultLine.slice(0, 180) };
-    }
+    const lines = splitBodyLines(body);
 
     const errorPatterns = [
       'erro na leitura',
@@ -608,10 +604,53 @@ class AutomationRunner {
       message: 'Envio sem confirmacao clara no NotaBe. Nota nao marcada como enviada.'
     };
   }
+
+  async readExplicitNotabeResult(page) {
+    const body = await page.locator('body').innerText({ timeout: 8000 }).catch(() => '');
+    const lines = splitBodyLines(body);
+
+    const latestResultLine = lines.find((line) => {
+      const normalized = normalizeText(line);
+      return /\berro\s+na\s+leitura\b/i.test(normalized)
+        || /\brepetida\b/i.test(normalized)
+        || /\bok(?:\s*[√✓v])?(?:\b|$)/i.test(normalized);
+    });
+
+    if (!latestResultLine) return null;
+
+    const normalized = normalizeText(latestResultLine);
+    if (/\berro\s+na\s+leitura\b/i.test(normalized)) {
+      return { status: 'erro', message: latestResultLine.slice(0, 180) };
+    }
+
+    if (/\brepetida\b/i.test(normalized)) {
+      return { status: 'enviada', message: latestResultLine.slice(0, 180) };
+    }
+
+    if (/\bok(?:\s*[√✓v])?(?:\b|$)/i.test(normalized)) {
+      return { status: 'enviada', message: latestResultLine.slice(0, 180) };
+    }
+
+    return null;
+  }
 }
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function splitBodyLines(body) {
+  return String(body || '')
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
 }
 
 async function firstExistingLocator(locators) {
