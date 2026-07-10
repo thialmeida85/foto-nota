@@ -309,6 +309,7 @@ class AutomationRunner {
 
   async navigateToSubmissionPage(page) {
     addLog('Verificando tela de envio do NotaBe');
+    await this.ensureCfeSatMode(page);
 
     if (await this.isSubmissionPageReady(page)) return;
 
@@ -339,12 +340,14 @@ class AutomationRunner {
       await page.waitForTimeout(1000);
       await this.guardAgainstManualBlocks(page);
       await this.resolveCnpjStep(page);
+      await this.ensureCfeSatMode(page);
 
       if (await this.isSubmissionPageReady(page)) return;
     }
 
     await page.goto(notabeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
     await page.waitForLoadState('networkidle', { timeout: 12000 }).catch(() => {});
+    await this.ensureCfeSatMode(page);
 
     if (!await this.isSubmissionPageReady(page)) {
       const title = await page.title().catch(() => '');
@@ -356,6 +359,23 @@ class AutomationRunner {
     const input = await this.findFiscalKeyInput(page);
     const button = await this.findSendButton(page);
     return Boolean(input && button);
+  }
+
+  async ensureCfeSatMode(page) {
+    const cfeSatButton = await firstExistingVisibleLocator([
+      page.getByRole('button', { name: /cfe-sat/i }).first(),
+      page.getByText(/cfe-sat/i).first(),
+      page.locator('button:has-text("CFe-SAT"), a:has-text("CFe-SAT"), [role="button"]:has-text("CFe-SAT")').first()
+    ]);
+
+    if (!cfeSatButton) return;
+
+    addLog('Selecionando modo CFe-SAT no NotaBe.');
+    await Promise.allSettled([
+      page.waitForLoadState('networkidle', { timeout: 8000 }),
+      cfeSatButton.click()
+    ]);
+    await page.waitForTimeout(500);
   }
 
   async resolveCnpjStep(page) {
