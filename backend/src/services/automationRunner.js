@@ -110,8 +110,9 @@ class AutomationRunner {
 
       await this.ensureLoggedIn(page);
       await this.guardAgainstManualBlocks(page);
+      await this.navigateToSubmissionPage(page);
 
-      const input = await this.findPrimaryInput(page);
+      const input = await this.findFiscalKeyInput(page);
       if (!input) throw new Error('Campo de entrada nao encontrado.');
 
       await input.fill(chaveLimpa);
@@ -132,6 +133,16 @@ class AutomationRunner {
 
       const result = await this.detectResult(page);
       if (result.status === 'erro') {
+        await updateStatus(nota.id, {
+          status: 'erro',
+          mensagem_erro: result.message,
+          sent_at: null
+        });
+        addLog(`Resultado ${maskKey(chaveLimpa)}: ${result.message}`);
+        return 'error';
+      }
+
+      if (result.status !== 'enviada') {
         await updateStatus(nota.id, {
           status: 'erro',
           mensagem_erro: result.message,
@@ -271,6 +282,74 @@ class AutomationRunner {
     addLog('Login NotaBe concluido.');
   }
 
+  async navigateToSubmissionPage(page) {
+    addLog('Verificando tela de envio do NotaBe');
+
+    if (await this.isSubmissionPageReady(page)) return;
+
+    const steps = [
+      /nova nota/i,
+      /adicionar nota/i,
+      /enviar nota/i,
+      /inserir nota/i,
+      /cadastrar nota/i,
+      /registrar nota/i,
+      /lançar nota/i,
+      /lancar nota/i,
+      /incluir nota/i,
+      /adicionar cupom/i,
+      /enviar cupom/i,
+      /cadastrar cupom/i,
+      /cupom/i,
+      /nota fiscal/i,
+      /^notas$/i
+    ];
+
+    for (const step of steps) {
+      const clicked = await this.clickVisibleByText(page, step);
+      if (!clicked) continue;
+
+      addLog(`Navegando no NotaBe: ${step.source}`);
+      await page.waitForLoadState('networkidle', { timeout: 12000 }).catch(() => {});
+      await page.waitForTimeout(1000);
+      await this.guardAgainstManualBlocks(page);
+
+      if (await this.isSubmissionPageReady(page)) return;
+    }
+
+    await page.goto(notabeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 12000 }).catch(() => {});
+
+    if (!await this.isSubmissionPageReady(page)) {
+      const title = await page.title().catch(() => '');
+      throw new Error(`Nao consegui chegar na tela de insercao do codigo do NotaBe. URL atual: ${page.url()} ${title ? `Titulo: ${title}` : ''}`);
+    }
+  }
+
+  async isSubmissionPageReady(page) {
+    const input = await this.findFiscalKeyInput(page);
+    const button = await this.findSendButton(page);
+    return Boolean(input && button);
+  }
+
+  async clickVisibleByText(page, textRegex) {
+    const locators = [
+      page.getByRole('link', { name: textRegex }).first(),
+      page.getByRole('button', { name: textRegex }).first(),
+      page.locator('a, button, [role="button"]').filter({ hasText: textRegex }).first()
+    ];
+
+    const target = await firstExistingVisibleLocator(locators);
+    if (!target) return false;
+
+    try {
+      await target.click();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async looksLikeLoginPage(page) {
     const passwordCount = await page.locator('input[type="password"]:visible').count().catch(() => 0);
     if (passwordCount > 0) return true;
@@ -315,6 +394,23 @@ class AutomationRunner {
     ]);
   }
 
+  async findFiscalKeyInput(page) {
+    const targeted = [
+      page.locator('input[placeholder*="chave" i]:visible').first(),
+      page.locator('input[placeholder*="codigo" i]:visible').first(),
+      page.locator('input[placeholder*="código" i]:visible').first(),
+      page.locator('input[name*="chave" i]:visible').first(),
+      page.locator('input[name*="codigo" i]:visible').first(),
+      page.locator('textarea[placeholder*="chave" i]:visible').first(),
+      page.locator('textarea[placeholder*="codigo" i]:visible').first()
+    ];
+
+    const targetedInput = await firstExistingVisibleLocator(targeted);
+    if (targetedInput) return targetedInput;
+
+    return this.findPrimaryInput(page);
+  }
+
   async findPrimaryInput(page) {
     const locators = [
       page.locator('input[type="text"]:visible').first(),
@@ -339,10 +435,10 @@ class AutomationRunner {
   }
 
   async findSendButton(page) {
-    const byRole = page.getByRole('button', { name: /envia/i }).first();
+    const byRole = page.getByRole('button', { name: /envia|enviar|salvar|cadastrar|registrar/i }).first();
     if (await byRole.count().catch(() => 0)) return byRole;
 
-    const byText = page.locator('button:has-text("Envia"), input[type="submit"], [role="button"]:has-text("Envia")').first();
+    const byText = page.locator('button:has-text("Envia"), button:has-text("Enviar"), button:has-text("Salvar"), button:has-text("Cadastrar"), button:has-text("Registrar"), input[type="submit"], [role="button"]:has-text("Envia"), [role="button"]:has-text("Enviar")').first();
     if (await byText.count().catch(() => 0)) return byText;
 
     return null;
@@ -352,16 +448,48 @@ class AutomationRunner {
     const body = await page.locator('body').innerText({ timeout: 8000 }).catch(() => '');
     const lowered = body.toLowerCase();
 
-    if (lowered.includes('erro na leitura')) {
-      return { status: 'erro', message: 'Erro na Leitura' };
+    const errorPatterns = [
+      'erro na leitura',
+      'erro',
+      'inválid',
+      'invalid',
+      'não foi possível',
+      'nao foi possivel',
+      'não encontrado',
+      'nao encontrado',
+      'falha'
+    ];
+
+    for (const pattern of errorPatterns) {
+      if (lowered.includes(pattern)) {
+        const line = body.split('\n').find((item) => item.toLowerCase().includes(pattern));
+        return { status: 'erro', message: line?.slice(0, 180) || 'Site retornou erro.' };
+      }
     }
 
-    if (lowered.includes('erro')) {
-      const line = body.split('\n').find((item) => item.toLowerCase().includes('erro'));
-      return { status: 'erro', message: line?.slice(0, 180) || 'Site retornou erro.' };
+    const successPatterns = [
+      'sucesso',
+      'enviada',
+      'enviado',
+      'cadastrada',
+      'cadastrado',
+      'registrada',
+      'registrado',
+      'nota inserida',
+      'salvo',
+      'salva'
+    ];
+
+    for (const pattern of successPatterns) {
+      if (lowered.includes(pattern)) {
+        return { status: 'enviada', message: 'Enviada' };
+      }
     }
 
-    return { status: 'enviada', message: 'Enviada' };
+    return {
+      status: 'indefinido',
+      message: 'Envio sem confirmacao clara no NotaBe. Nota nao marcada como enviada.'
+    };
   }
 }
 
@@ -372,6 +500,15 @@ function wait(ms) {
 async function firstExistingLocator(locators) {
   for (const locator of locators) {
     if (await locator.count().catch(() => 0)) return locator;
+  }
+
+  return null;
+}
+
+async function firstExistingVisibleLocator(locators) {
+  for (const locator of locators) {
+    if (!await locator.count().catch(() => 0)) continue;
+    if (await locator.isVisible().catch(() => false)) return locator;
   }
 
   return null;

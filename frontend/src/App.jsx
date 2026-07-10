@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, CirclePause, CirclePlay, RotateCcw, RotateCw, Send, Square, UploadCloud } from 'lucide-react';
+import { Camera, CirclePause, CirclePlay, RotateCcw, RotateCw, Send, Square, Trash2, UploadCloud } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
 import { api } from './services/api.js';
 import { extractFiscalKey, maskKey } from './utils/ocr.js';
@@ -61,6 +61,20 @@ function CaptureNotes() {
     setImageUrl(URL.createObjectURL(selected));
     setOcrText('');
     setKey('');
+    setStatus('');
+    setNeedsConfirmation(false);
+    setConfirmed(false);
+    setCrop({ x: 0.06, y: 0.38, width: 0.88, height: 0.18 });
+    setRotation(0);
+  }
+
+  function clearImage() {
+    if (imageUrl) URL.revokeObjectURL(imageUrl);
+    setFile(null);
+    setImageUrl('');
+    setOcrText('');
+    setKey('');
+    setTipo('DESCONHECIDO');
     setStatus('');
     setNeedsConfirmation(false);
     setConfirmed(false);
@@ -277,6 +291,16 @@ function CaptureNotes() {
             aria-label="Girar leitura"
           >
             <RotateCw aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="icon-only"
+            onClick={clearImage}
+            disabled={loading || !file}
+            title="Apagar imagem"
+            aria-label="Apagar imagem"
+          >
+            <Trash2 aria-hidden="true" />
           </button>
         </div>
       </div>
