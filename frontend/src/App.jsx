@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, CirclePause, CirclePlay, RotateCcw, RotateCw, Send, Square, Trash2, UploadCloud } from 'lucide-react';
+import { Camera, CirclePause, CirclePlay, LogOut, RotateCcw, RotateCw, Send, Square, Trash2, UploadCloud } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
 import { api } from './services/api.js';
 import { extractFiscalKey, maskKey } from './utils/ocr.js';
@@ -11,6 +11,16 @@ const tabs = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('capturar');
+  const [session, setSession] = useState(() => api.getSession());
+
+  function logout() {
+    api.clearSession();
+    setSession(null);
+  }
+
+  if (!session) {
+    return <LoginScreen onLogin={setSession} />;
+  }
 
   return (
     <div className="app-shell">
@@ -29,6 +39,10 @@ export default function App() {
               {tab.label}
             </button>
           ))}
+          <button className="logout-button" onClick={logout} title="Sair">
+            <LogOut aria-hidden="true" />
+            Sair
+          </button>
         </nav>
       </header>
 
@@ -36,6 +50,76 @@ export default function App() {
         {activeTab === 'capturar' ? <CaptureNotes /> : <SendNotes />}
       </main>
     </div>
+  );
+}
+
+function LoginScreen({ onLogin }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState('');
+
+  async function submit(event) {
+    event.preventDefault();
+    setLoading(true);
+    setStatus('Entrando...');
+
+    try {
+      const nextSession = await api.login({ email, password, remember });
+      setStatus('');
+      onLogin(nextSession);
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="login-page">
+      <form className="login-panel" onSubmit={submit}>
+        <p className="eyebrow">Acesso restrito</p>
+        <h1>Foto Notas</h1>
+
+        <label>
+          Email
+          <input
+            type="email"
+            autoComplete="username"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+          />
+        </label>
+
+        <label>
+          Senha
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+          />
+        </label>
+
+        <label className="checkbox-line remember-line">
+          <input
+            type="checkbox"
+            checked={remember}
+            onChange={(event) => setRemember(event.target.checked)}
+          />
+          Lembrar-me
+        </label>
+
+        <button className="primary full" disabled={loading}>
+          {loading ? 'Entrando...' : 'Entrar'}
+        </button>
+
+        {status && <p className="status-message">{status}</p>}
+      </form>
+    </main>
   );
 }
 
@@ -556,7 +640,7 @@ function SendNotes() {
   }, []);
 
   useEffect(() => {
-    const source = new EventSource(`${api.baseUrl}/api/automacao/logs`);
+    const source = new EventSource(api.logsUrl());
     eventSourceRef.current = source;
     source.onmessage = (event) => {
       const entry = JSON.parse(event.data);

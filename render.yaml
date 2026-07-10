@@ -12,6 +12,12 @@ services:
         sync: false
       - key: NODE_ENV
         value: production
+      - key: APP_AUTH_EMAIL
+        value: jualmeidaatelie@gmail.com
+      - key: APP_AUTH_PASSWORD
+        sync: false
+      - key: APP_AUTH_SECRET
+        sync: false
       - key: NOTABE_URL
         value: https://asin.notabe.com/notes/new
       - key: NOTABE_USERNAME

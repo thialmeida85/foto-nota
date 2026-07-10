@@ -1,9 +1,40 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const sessionKey = 'foto-notas-session';
+
+function readSession() {
+  const raw = localStorage.getItem(sessionKey) || sessionStorage.getItem(sessionKey);
+  if (!raw) return null;
+
+  try {
+    const session = JSON.parse(raw);
+    if (!session?.token || Number(session.expiresAt) <= Date.now()) {
+      clearSession();
+      return null;
+    }
+    return session;
+  } catch {
+    clearSession();
+    return null;
+  }
+}
+
+function saveSession(session, remember) {
+  clearSession();
+  const storage = remember ? localStorage : sessionStorage;
+  storage.setItem(sessionKey, JSON.stringify(session));
+}
+
+function clearSession() {
+  localStorage.removeItem(sessionKey);
+  sessionStorage.removeItem(sessionKey);
+}
 
 async function request(path, options = {}) {
+  const session = readSession();
   const response = await fetch(`${API_URL}${path}`, {
     headers: {
       'Content-Type': 'application/json',
+      ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
       ...(options.headers || {})
     },
     ...options
@@ -20,7 +51,22 @@ async function request(path, options = {}) {
 
 export const api = {
   baseUrl: API_URL,
+  getSession: readSession,
+  clearSession,
   health: () => request('/api/health'),
+  login: async (payload) => {
+    const session = await request('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    saveSession(session, Boolean(payload.remember));
+    return session;
+  },
+  logsUrl: () => {
+    const session = readSession();
+    const query = session?.token ? `?token=${encodeURIComponent(session.token)}` : '';
+    return `${API_URL}/api/automacao/logs${query}`;
+  },
   listNotas: () => request('/api/notas'),
   stats: () => request('/api/notas/stats'),
   createNota: (payload) => request('/api/notas', {

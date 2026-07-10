@@ -84,6 +84,9 @@ Configuracao sugerida:
 - Environment:
   - `DATABASE_URL`: connection string do Neon
   - `NODE_ENV`: `production`
+  - `APP_AUTH_EMAIL`: email para entrar no app Foto Notas
+  - `APP_AUTH_PASSWORD`: senha para entrar no app Foto Notas
+  - `APP_AUTH_SECRET`: chave aleatoria para assinar sessoes do app
   - `NOTABE_URL`: `https://asin.notabe.com/notes/new`
   - `NOTABE_USERNAME`: usuario ou email do NotaBe
   - `NOTABE_PASSWORD`: senha do NotaBe
@@ -157,6 +160,8 @@ Voce tambem pode pausar, parar, enviar apenas a proxima nota ou reprocessar erro
 ## 8. Login, captcha e limites do NotaBe
 
 O sistema nao burla login, captcha ou seguranca do NotaBe.
+
+O app Foto Notas tambem tem login proprio antes do dashboard. Configure `APP_AUTH_EMAIL`, `APP_AUTH_PASSWORD` e `APP_AUTH_SECRET` no backend. Se `APP_AUTH_EMAIL` e `APP_AUTH_PASSWORD` nao forem definidos, o backend usa `NOTABE_USERNAME` e `NOTABE_PASSWORD` como fallback. Quando o usuario marca `Lembrar-me`, o token de sessao fica salvo no navegador por mais tempo.
 
 Se `NOTABE_USERNAME` e `NOTABE_PASSWORD` estiverem configurados no backend, a automacao tenta fazer o primeiro login automaticamente quando detectar a tela de login. As credenciais devem ser cadastradas como secrets no Render.
 
