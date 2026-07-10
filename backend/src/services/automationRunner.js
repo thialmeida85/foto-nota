@@ -606,6 +606,27 @@ class AutomationRunner {
   }
 
   async readExplicitNotabeResult(page) {
+    const resultCell = await firstExistingVisibleLocator([
+      page.locator('td.result.label-success, .result.label-success').first(),
+      page.locator('td.result.label-danger, .result.label-danger').first(),
+      page.locator('td.result.label-warning, .result.label-warning').first(),
+      page.locator('td.result, .result').filter({ hasText: /ok|repetida|erro\s+na\s+leitura/i }).first()
+    ]);
+
+    if (resultCell) {
+      const className = await resultCell.evaluate((element) => element.className || '').catch(() => '');
+      const text = await resultCell.innerText().catch(() => '');
+      const normalized = normalizeText(`${className} ${text}`);
+
+      if (/label-danger/i.test(className) || /\berro\s+na\s+leitura\b/i.test(normalized)) {
+        return { status: 'erro', message: text.trim().slice(0, 180) || 'Erro na Leitura' };
+      }
+
+      if (/label-success/i.test(className) || /\bok(?:\s*[√✓v])?(?:\b|$)/i.test(normalized) || /\brepetida\b/i.test(normalized)) {
+        return { status: 'enviada', message: text.trim().slice(0, 180) || 'Enviada' };
+      }
+    }
+
     const body = await page.locator('body').innerText({ timeout: 8000 }).catch(() => '');
     const lines = splitBodyLines(body);
 
