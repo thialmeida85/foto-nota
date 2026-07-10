@@ -221,13 +221,15 @@ class AutomationRunner {
       throw new Error('Captcha detectado.');
     }
 
-    if (lowered.includes('login') || lowered.includes('senha') || lowered.includes('entrar')) {
+    if (await this.looksLikeLoginPage(page) || lowered.includes('login necessario') || lowered.includes('login necessário')) {
       this.pause('Faca login no navegador da automacao.');
       throw new Error('Sessao expirada ou login necessario.');
     }
   }
 
   async ensureLoggedIn(page) {
+    await this.openLoginEntryPointIfNeeded(page);
+
     if (!await this.looksLikeLoginPage(page)) return;
 
     const username = process.env.NOTABE_USERNAME;
@@ -281,6 +283,28 @@ class AutomationRunner {
     await page.goto(notabeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
     addLog('Login NotaBe concluido.');
+  }
+
+  async openLoginEntryPointIfNeeded(page) {
+    if (await this.looksLikeLoginPage(page)) return;
+
+    const entryPoint = await this.findLoginEntryPoint(page);
+    if (!entryPoint) return;
+
+    const username = process.env.NOTABE_USERNAME;
+    const password = process.env.NOTABE_PASSWORD;
+
+    if (!username || !password) {
+      this.pause('Login necessario. Configure NOTABE_USERNAME e NOTABE_PASSWORD no backend.');
+      throw new Error('Sessao expirada ou login necessario.');
+    }
+
+    addLog('Home do NotaBe sem login. Clicando em Entrar.');
+    await Promise.allSettled([
+      page.waitForLoadState('networkidle', { timeout: 15000 }),
+      entryPoint.click()
+    ]);
+    await page.waitForTimeout(1200);
   }
 
   async navigateToSubmissionPage(page) {
@@ -452,6 +476,14 @@ class AutomationRunner {
     return firstExistingLocator([
       page.getByRole('button', { name: /entrar|login|acessar|continuar/i }).first(),
       page.locator('button:has-text("Entrar"), button:has-text("Login"), button:has-text("Acessar"), input[type="submit"]').first()
+    ]);
+  }
+
+  async findLoginEntryPoint(page) {
+    return firstExistingVisibleLocator([
+      page.getByRole('link', { name: /^entrar$/i }).first(),
+      page.getByRole('button', { name: /^entrar$/i }).first(),
+      page.locator('a:has-text("Entrar"), button:has-text("Entrar")').first()
     ]);
   }
 
