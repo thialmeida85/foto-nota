@@ -87,7 +87,6 @@ Configuracao sugerida:
   - `NOTABE_URL`: `https://asin.notabe.com/notes/new`
   - `NOTABE_USERNAME`: usuario ou email do NotaBe
   - `NOTABE_PASSWORD`: senha do NotaBe
-  - `NOTABE_CNPJ`: CNPJ usado se o NotaBe pedir identificacao antes da tela de envio
   - `PLAYWRIGHT_BROWSERS_PATH`: `0`
   - `GROQ_API_KEY`: chave da Groq para o botao `Corrigir com IA`
   - `GROQ_MODEL`: `meta-llama/llama-4-scout-17b-16e-instruct`
@@ -161,7 +160,7 @@ O sistema nao burla login, captcha ou seguranca do NotaBe.
 
 Se `NOTABE_USERNAME` e `NOTABE_PASSWORD` estiverem configurados no backend, a automacao tenta fazer o primeiro login automaticamente quando detectar a tela de login. As credenciais devem ser cadastradas como secrets no Render.
 
-Se o NotaBe pedir CNPJ antes de liberar a tela de envio, configure `NOTABE_CNPJ` no backend. A automacao preenche essa etapa separadamente e so tenta digitar a chave da nota quando encontrar um campo com contexto de nota fiscal, cupom ou chave de acesso.
+Depois do login, a automacao abre a tela de envio, seleciona `CFe-SAT` e usa a entrada por `Cod. Barras` para digitar a chave da nota. O campo `CNPJ` da tela do NotaBe nao e usado como login.
 
 Se o NotaBe exigir captcha ou outro desafio manual, a automacao pausa e registra o motivo nos logs. Para login manual, rode localmente com:
 

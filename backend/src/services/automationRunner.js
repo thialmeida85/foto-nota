@@ -110,7 +110,6 @@ class AutomationRunner {
 
       await this.ensureLoggedIn(page);
       await this.guardAgainstManualBlocks(page);
-      await this.resolveCnpjStep(page);
       await this.navigateToSubmissionPage(page);
 
       const input = await this.findFiscalKeyInput(page);
@@ -310,6 +309,7 @@ class AutomationRunner {
   async navigateToSubmissionPage(page) {
     addLog('Verificando tela de envio do NotaBe');
     await this.ensureCfeSatMode(page);
+    await this.ensureBarcodeMode(page);
 
     if (await this.isSubmissionPageReady(page)) return;
 
@@ -339,8 +339,8 @@ class AutomationRunner {
       await page.waitForLoadState('networkidle', { timeout: 12000 }).catch(() => {});
       await page.waitForTimeout(1000);
       await this.guardAgainstManualBlocks(page);
-      await this.resolveCnpjStep(page);
       await this.ensureCfeSatMode(page);
+      await this.ensureBarcodeMode(page);
 
       if (await this.isSubmissionPageReady(page)) return;
     }
@@ -348,6 +348,7 @@ class AutomationRunner {
     await page.goto(notabeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
     await page.waitForLoadState('networkidle', { timeout: 12000 }).catch(() => {});
     await this.ensureCfeSatMode(page);
+    await this.ensureBarcodeMode(page);
 
     if (!await this.isSubmissionPageReady(page)) {
       const title = await page.title().catch(() => '');
@@ -378,43 +379,21 @@ class AutomationRunner {
     await page.waitForTimeout(500);
   }
 
-  async resolveCnpjStep(page) {
-    if (!await this.looksLikeCnpjStep(page)) return;
-
-    const cnpj = cleanKey(process.env.NOTABE_CNPJ || '');
-    if (!cnpj) {
-      this.pause('NotaBe pediu CNPJ. Configure NOTABE_CNPJ no backend para continuar.');
-      throw new Error('Etapa de CNPJ detectada no NotaBe. Configure NOTABE_CNPJ.');
-    }
-
-    addLog('Etapa de CNPJ detectada. Preenchendo CNPJ configurado.');
-    const input = await this.findCnpjInput(page);
-    if (!input) {
-      throw new Error('Etapa de CNPJ detectada, mas campo CNPJ nao foi encontrado.');
-    }
-
-    await input.fill(cnpj);
-    await input.dispatchEvent('input');
-    await input.dispatchEvent('change');
-
-    const button = await firstExistingVisibleLocator([
-      page.getByRole('button', { name: /continuar|entrar|acessar|avancar|avançar|confirmar|enviar/i }).first(),
-      page.locator('button:has-text("Continuar"), button:has-text("Entrar"), button:has-text("Acessar"), button:has-text("Avançar"), button:has-text("Avancar"), button:has-text("Confirmar"), input[type="submit"]').first()
+  async ensureBarcodeMode(page) {
+    const barcodeButton = await firstExistingVisibleLocator([
+      page.getByRole('button', { name: /c[oó]d\.?\s*barras/i }).first(),
+      page.getByText(/c[oó]d\.?\s*barras/i).first(),
+      page.locator('button:has-text("Cód. Barras"), button:has-text("Cod. Barras"), a:has-text("Cód. Barras"), a:has-text("Cod. Barras"), [role="button"]:has-text("Cód. Barras"), [role="button"]:has-text("Cod. Barras")').first()
     ]);
 
-    if (!button) {
-      throw new Error('Etapa de CNPJ detectada, mas botao para continuar nao foi encontrado.');
-    }
+    if (!barcodeButton) return;
 
+    addLog('Selecionando entrada por codigo de barras no NotaBe.');
     await Promise.allSettled([
-      page.waitForLoadState('networkidle', { timeout: 15000 }),
-      button.click()
+      page.waitForLoadState('networkidle', { timeout: 8000 }),
+      barcodeButton.click()
     ]);
-    await page.waitForTimeout(1200);
-
-    if (await this.looksLikeCnpjStep(page)) {
-      throw new Error('CNPJ nao foi aceito pelo NotaBe. Confira NOTABE_CNPJ.');
-    }
+    await page.waitForTimeout(500);
   }
 
   async clickVisibleByText(page, textRegex) {
@@ -448,26 +427,6 @@ class AutomationRunner {
     const text = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
     const lowered = text.toLowerCase();
     return lowered.includes('captcha') || lowered.includes('recaptcha');
-  }
-
-  async looksLikeCnpjStep(page) {
-    const input = await this.findCnpjInput(page);
-    if (input) return true;
-
-    const text = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
-    const lowered = text.toLowerCase();
-    return lowered.includes('cnpj')
-      && !lowered.includes('chave de acesso')
-      && !lowered.includes('codigo da nota')
-      && !lowered.includes('código da nota');
-  }
-
-  async findCnpjInput(page) {
-    return firstExistingVisibleLocator([
-      page.locator('input[placeholder*="cnpj" i]:visible').first(),
-      page.locator('input[name*="cnpj" i]:visible').first(),
-      page.locator('input[id*="cnpj" i]:visible').first()
-    ]);
   }
 
   async findLoginInput(page) {
@@ -519,6 +478,10 @@ class AutomationRunner {
     const hasFiscalKeyContext = lowered.includes('chave')
       || lowered.includes('código da nota')
       || lowered.includes('codigo da nota')
+      || lowered.includes('cód. barras')
+      || lowered.includes('cod. barras')
+      || lowered.includes('codigo de barras')
+      || lowered.includes('código de barras')
       || lowered.includes('cupom fiscal')
       || lowered.includes('nota fiscal')
       || lowered.includes('nf-e')
@@ -526,16 +489,19 @@ class AutomationRunner {
 
     const targeted = [
       page.locator('input[placeholder*="chave" i]:visible').first(),
-      page.locator('input[placeholder*="codigo" i]:visible').first(),
-      page.locator('input[placeholder*="código" i]:visible').first(),
+      page.locator('input[placeholder*="codigo" i][placeholder*="barras" i]:visible').first(),
+      page.locator('input[placeholder*="código" i][placeholder*="barras" i]:visible').first(),
+      page.locator('input[placeholder*="barras" i]:visible').first(),
       page.locator('input[placeholder*="nota" i]:visible').first(),
       page.locator('input[placeholder*="cupom" i]:visible').first(),
       page.locator('input[name*="chave" i]:visible').first(),
-      page.locator('input[name*="codigo" i]:visible').first(),
+      page.locator('input[name*="codigo" i][name*="barra" i]:visible').first(),
+      page.locator('input[name*="barra" i]:visible').first(),
       page.locator('input[name*="nota" i]:visible').first(),
       page.locator('input[name*="cupom" i]:visible').first(),
       page.locator('textarea[placeholder*="chave" i]:visible').first(),
-      page.locator('textarea[placeholder*="codigo" i]:visible').first(),
+      page.locator('textarea[placeholder*="codigo" i][placeholder*="barras" i]:visible').first(),
+      page.locator('textarea[placeholder*="barras" i]:visible').first(),
       page.locator('textarea[placeholder*="nota" i]:visible').first()
     ];
 
@@ -544,10 +510,7 @@ class AutomationRunner {
 
     if (!hasFiscalKeyContext) return null;
 
-    return firstExistingVisibleLocator([
-      page.locator('input[type="text"]:visible').first(),
-      page.locator('textarea:visible').first()
-    ]);
+    return firstVisibleNonCnpjInput(page);
   }
 
   async findPrimaryInput(page) {
@@ -651,6 +614,35 @@ async function firstExistingVisibleLocator(locators) {
   }
 
   return null;
+}
+
+async function firstVisibleNonCnpjInput(page) {
+  return page.evaluateHandle(() => {
+    const blockedPatterns = [/cnpj/i, /valor/i, /data/i, /\bdia\b/i, /\bcod\b/i];
+    const fields = [...document.querySelectorAll('input, textarea')]
+      .filter((el) => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        if (rect.width <= 0 || rect.height <= 0 || style.visibility === 'hidden' || style.display === 'none') return false;
+
+        const type = (el.getAttribute('type') || '').toLowerCase();
+        if (['hidden', 'submit', 'button', 'checkbox', 'radio'].includes(type)) return false;
+
+        const attrs = [
+          el.getAttribute('name'),
+          el.getAttribute('id'),
+          el.getAttribute('placeholder'),
+          el.getAttribute('aria-label'),
+          el.closest('label')?.innerText,
+          el.parentElement?.innerText
+        ].filter(Boolean).join(' ');
+
+        return !blockedPatterns.some((pattern) => pattern.test(attrs));
+      })
+      .sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width);
+
+    return fields[0] || null;
+  }).then((handle) => handle.asElement()).catch(() => null);
 }
 
 export const automationRunner = new AutomationRunner();
