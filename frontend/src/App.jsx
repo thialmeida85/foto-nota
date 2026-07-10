@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, CirclePause, CirclePlay, RotateCcw, Send, Square, UploadCloud } from 'lucide-react';
+import { Camera, CirclePause, CirclePlay, RotateCcw, RotateCw, Send, Square, UploadCloud } from 'lucide-react';
 import { createWorker } from 'tesseract.js';
 import { api } from './services/api.js';
 import { extractFiscalKey, maskKey } from './utils/ocr.js';
@@ -49,6 +49,10 @@ function CaptureNotes() {
   const [confirmed, setConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [crop, setCrop] = useState({ x: 0.06, y: 0.38, width: 0.88, height: 0.18 });
+  const [rotation, setRotation] = useState(0);
+  const cropStageRef = useRef(null);
+  const dragRef = useRef(null);
 
   function onFileChange(event) {
     const selected = event.target.files?.[0];
@@ -60,6 +64,41 @@ function CaptureNotes() {
     setStatus('');
     setNeedsConfirmation(false);
     setConfirmed(false);
+    setCrop({ x: 0.06, y: 0.38, width: 0.88, height: 0.18 });
+    setRotation(0);
+  }
+
+  function startCropDrag(event) {
+    if (!cropStageRef.current) return;
+    const rect = cropStageRef.current.getBoundingClientRect();
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      initialCrop: crop,
+      rect
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function moveCrop(event) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const nextX = drag.initialCrop.x + ((event.clientX - drag.startX) / drag.rect.width);
+    const nextY = drag.initialCrop.y + ((event.clientY - drag.startY) / drag.rect.height);
+
+    setCrop({
+      ...drag.initialCrop,
+      x: clamp(nextX, 0, 1 - drag.initialCrop.width),
+      y: clamp(nextY, 0, 1 - drag.initialCrop.height)
+    });
+  }
+
+  function stopCropDrag(event) {
+    if (dragRef.current?.pointerId === event.pointerId) {
+      dragRef.current = null;
+    }
   }
 
   async function readNote() {
@@ -73,7 +112,8 @@ function CaptureNotes() {
     const worker = await createWorker('por');
 
     try {
-      const result = await worker.recognize(file);
+      const croppedImage = await prepareImageForRecognition(file, crop, rotation, { output: 'blob' });
+      const result = await worker.recognize(croppedImage);
       const text = result.data.text || '';
       const extracted = extractFiscalKey(text);
       setOcrText(text);
@@ -125,7 +165,7 @@ function CaptureNotes() {
   }
 
   async function analyzeImageWithAi(sourceOcrText) {
-    const imageDataUrl = await compressImageForAi(file);
+    const imageDataUrl = await prepareImageForRecognition(file, crop, rotation, { output: 'dataUrl' });
     const result = await api.analyzeWithGroq({
       imageDataUrl,
       ocrText: sourceOcrText
@@ -192,7 +232,26 @@ function CaptureNotes() {
 
         {imageUrl && (
           <div className="preview-frame">
-            <img src={imageUrl} alt="Preview da nota capturada" />
+            <div className="crop-stage" ref={cropStageRef}>
+              <img
+                src={imageUrl}
+                alt="Preview da nota capturada"
+                style={{ transform: `rotate(${rotation}deg)` }}
+              />
+              <div
+                className="crop-box"
+                style={{
+                  left: `${crop.x * 100}%`,
+                  top: `${crop.y * 100}%`,
+                  width: `${crop.width * 100}%`,
+                  height: `${crop.height * 100}%`
+                }}
+                onPointerDown={startCropDrag}
+                onPointerMove={moveCrop}
+                onPointerUp={stopCropDrag}
+                onPointerCancel={stopCropDrag}
+              />
+            </div>
           </div>
         )}
 
@@ -203,6 +262,16 @@ function CaptureNotes() {
           </button>
           <button onClick={correctWithAi} disabled={loading || !file}>
             Corrigir com IA
+          </button>
+          <button
+            type="button"
+            className="icon-only"
+            onClick={() => setRotation((current) => (current + 90) % 360)}
+            disabled={loading || !file}
+            title="Girar leitura"
+            aria-label="Girar leitura"
+          >
+            <RotateCw aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -253,32 +322,85 @@ function shouldUseAiFallback(extracted) {
     || extracted.tipo === 'DESCONHECIDO';
 }
 
-function compressImageForAi(file) {
+function prepareImageForRecognition(file, crop, rotation, options = { output: 'blob' }) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     const url = URL.createObjectURL(file);
 
     image.onload = () => {
-      const maxSize = 1600;
-      const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+      const orientedCanvas = drawOrientedImage(image, rotation);
+      const safeCrop = clampCrop(crop);
+      const sourceX = Math.round(orientedCanvas.width * safeCrop.x);
+      const sourceY = Math.round(orientedCanvas.height * safeCrop.y);
+      const sourceWidth = Math.round(orientedCanvas.width * safeCrop.width);
+      const sourceHeight = Math.round(orientedCanvas.height * safeCrop.height);
+      const maxSize = options.output === 'dataUrl' ? 1600 : 2200;
+      const scale = Math.min(1, maxSize / Math.max(sourceWidth, sourceHeight));
       const canvas = document.createElement('canvas');
-      canvas.width = Math.round(image.width * scale);
-      canvas.height = Math.round(image.height * scale);
+      canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+      canvas.height = Math.max(1, Math.round(sourceHeight * scale));
 
-      const context = canvas.getContext('2d');
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      context.imageSmoothingEnabled = true;
+      context.drawImage(
+        orientedCanvas,
+        sourceX,
+        sourceY,
+        sourceWidth,
+        sourceHeight,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
       URL.revokeObjectURL(url);
 
-      resolve(canvas.toDataURL('image/jpeg', 0.82));
+      if (options.output === 'dataUrl') {
+        resolve(canvas.toDataURL('image/jpeg', 0.86));
+        return;
+      }
+
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Nao foi possivel preparar o recorte para leitura.'));
+      }, 'image/jpeg', 0.9);
     };
 
     image.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error('Nao foi possivel preparar a imagem para IA.'));
+      reject(new Error('Nao foi possivel preparar a imagem para leitura.'));
     };
 
     image.src = url;
   });
+}
+
+function drawOrientedImage(image, rotation) {
+  const normalizedRotation = ((rotation % 360) + 360) % 360;
+  const swapsDimensions = normalizedRotation === 90 || normalizedRotation === 270;
+  const canvas = document.createElement('canvas');
+  canvas.width = swapsDimensions ? image.height : image.width;
+  canvas.height = swapsDimensions ? image.width : image.height;
+
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.translate(canvas.width / 2, canvas.height / 2);
+  context.rotate((normalizedRotation * Math.PI) / 180);
+  context.drawImage(image, -image.width / 2, -image.height / 2);
+
+  return canvas;
+}
+
+function clampCrop(crop) {
+  return {
+    x: clamp(crop.x, 0, 0.95),
+    y: clamp(crop.y, 0, 0.95),
+    width: clamp(crop.width, 0.05, 1 - crop.x),
+    height: clamp(crop.height, 0.05, 1 - crop.y)
+  };
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function SendNotes() {
