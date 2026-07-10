@@ -112,7 +112,12 @@ function CaptureNotes() {
     const worker = await createWorker('por');
 
     try {
-      const croppedImage = await prepareImageForRecognition(file, crop, rotation, { output: 'blob' });
+      await worker.setParameters({
+        tessedit_char_whitelist: '0123456789 ',
+        tessedit_pageseg_mode: '6',
+        preserve_interword_spaces: '1'
+      });
+      const croppedImage = await prepareImageForRecognition(file, crop, rotation, { output: 'blob', preprocess: true });
       const result = await worker.recognize(croppedImage);
       const text = result.data.text || '';
       const extracted = extractFiscalKey(text);
@@ -334,8 +339,10 @@ function prepareImageForRecognition(file, crop, rotation, options = { output: 'b
       const sourceY = Math.round(orientedCanvas.height * safeCrop.y);
       const sourceWidth = Math.round(orientedCanvas.width * safeCrop.width);
       const sourceHeight = Math.round(orientedCanvas.height * safeCrop.height);
-      const maxSize = options.output === 'dataUrl' ? 1600 : 2200;
-      const scale = Math.min(1, maxSize / Math.max(sourceWidth, sourceHeight));
+      const longSide = Math.max(sourceWidth, sourceHeight);
+      const scale = options.preprocess
+        ? clamp(2200 / longSide, 1, 3)
+        : Math.min(1, 1600 / longSide);
       const canvas = document.createElement('canvas');
       canvas.width = Math.max(1, Math.round(sourceWidth * scale));
       canvas.height = Math.max(1, Math.round(sourceHeight * scale));
@@ -353,6 +360,7 @@ function prepareImageForRecognition(file, crop, rotation, options = { output: 'b
         canvas.width,
         canvas.height
       );
+      if (options.preprocess) enhanceReceiptCrop(context, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
 
       if (options.output === 'dataUrl') {
@@ -373,6 +381,33 @@ function prepareImageForRecognition(file, crop, rotation, options = { output: 'b
 
     image.src = url;
   });
+}
+
+function enhanceReceiptCrop(context, width, height) {
+  const imageData = context.getImageData(0, 0, width, height);
+  const { data } = imageData;
+  let total = 0;
+
+  for (let index = 0; index < data.length; index += 4) {
+    const luminance = (data[index] * 0.299) + (data[index + 1] * 0.587) + (data[index + 2] * 0.114);
+    total += luminance;
+  }
+
+  const mean = total / (data.length / 4);
+  const threshold = clamp(mean - 22, 88, 178);
+
+  for (let index = 0; index < data.length; index += 4) {
+    const luminance = (data[index] * 0.299) + (data[index + 1] * 0.587) + (data[index + 2] * 0.114);
+    const contrasted = clamp(((luminance - 128) * 1.75) + 128, 0, 255);
+    const value = contrasted < threshold ? 0 : 255;
+
+    data[index] = value;
+    data[index + 1] = value;
+    data[index + 2] = value;
+    data[index + 3] = 255;
+  }
+
+  context.putImageData(imageData, 0, 0);
 }
 
 function drawOrientedImage(image, rotation) {
