@@ -1,16 +1,20 @@
 export function extractFiscalKey(text) {
-  const onlyNumbers = String(text || '').replace(/\D/g, '');
-  const match44 = onlyNumbers.match(/\d{44}/);
+  const rawText = String(text || '');
+  const candidates = collectAccessKeyCandidates(rawText);
+  const validCandidates = candidates.filter((candidate) => isValidAccessKey(candidate.key));
+  const bestCandidate = [...validCandidates, ...candidates]
+    .sort((a, b) => b.score - a.score)[0];
 
-  if (match44) {
+  if (bestCandidate) {
     return {
-      key: match44[0],
-      tipo: 'NFCE',
-      confidence: 'found-44',
+      key: bestCandidate.key,
+      tipo: getFiscalKeyType(bestCandidate.key),
+      confidence: bestCandidate.reason,
       needsConfirmation: false
     };
   }
 
+  const onlyNumbers = rawText.replace(/\D/g, '');
   const possibleLong = onlyNumbers.match(/\d{35,}/);
   if (possibleLong) {
     return {
@@ -29,9 +33,104 @@ export function extractFiscalKey(text) {
   };
 }
 
+function collectAccessKeyCandidates(text) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const candidates = new Map();
+
+  function addCandidate(source, score, reason) {
+    const normalized = normalizeDigitText(source);
+    for (const key of extractWindowsOf44(normalized)) {
+      const current = candidates.get(key);
+      const bonus = isValidAccessKey(key) ? 100 : 0;
+      const next = { key, score: score + bonus, reason };
+      if (!current || next.score > current.score) candidates.set(key, next);
+    }
+  }
+
+  // NFC-e QR codes usually carry the access key after ?p= or &p=.
+  for (const match of text.matchAll(/[?&]p\s*=\s*([0-9A-Za-z\s|.-]{44,})/gi)) {
+    addCandidate(match[1].split('|')[0], 140, 'qrcode-param');
+  }
+
+  lines.forEach((line, index) => {
+    const context = removeDiacritics(line).toLowerCase();
+    const nextLines = [line, lines[index + 1], lines[index + 2]].filter(Boolean).join(' ');
+
+    if (context.includes('chave') || context.includes('acesso') || context.includes('consulta')) {
+      addCandidate(nextLines, 120, 'access-key-context');
+    }
+
+    if (context.includes('qrcode') || context.includes('qr code') || context.includes('nfce.fazenda')) {
+      addCandidate(nextLines, 110, 'qrcode-line');
+    }
+
+    const digitCount = normalizeDigitText(line).replace(/\D/g, '').length;
+    const looksLikeGroupedKey = digitCount >= 40 && /(\d[\s.-]){8,}/.test(line);
+    if (looksLikeGroupedKey) {
+      addCandidate(line, 80, 'grouped-key-line');
+    }
+  });
+
+  addCandidate(text, 10, 'fallback-44-digits');
+
+  return [...candidates.values()];
+}
+
+function normalizeDigitText(value) {
+  return String(value)
+    .replace(/[Oo]/g, '0')
+    .replace(/[Il|]/g, '1')
+    .replace(/[Ss]/g, '5')
+    .replace(/[Bb]/g, '8');
+}
+
+function extractWindowsOf44(value) {
+  const digits = value.replace(/\D/g, '');
+  const windows = new Set();
+
+  for (let index = 0; index <= digits.length - 44; index += 1) {
+    windows.add(digits.slice(index, index + 44));
+  }
+
+  return [...windows];
+}
+
+function isValidAccessKey(key) {
+  if (!/^\d{44}$/.test(key)) return false;
+
+  const expectedDigit = calculateAccessKeyDigit(key.slice(0, 43));
+  return expectedDigit === Number(key[43]);
+}
+
+function calculateAccessKeyDigit(first43Digits) {
+  let factor = 2;
+  let sum = 0;
+
+  for (let index = first43Digits.length - 1; index >= 0; index -= 1) {
+    sum += Number(first43Digits[index]) * factor;
+    factor = factor === 9 ? 2 : factor + 1;
+  }
+
+  const digit = 11 - (sum % 11);
+  return digit >= 10 ? 0 : digit;
+}
+
+function getFiscalKeyType(key) {
+  const model = key.slice(20, 22);
+  if (model === '65') return 'NFCE';
+  if (model === '55') return 'NFE';
+  return 'DESCONHECIDO';
+}
+
+function removeDiacritics(value) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 export function maskKey(value = '') {
   const clean = String(value).replace(/\D/g, '');
   if (clean.length <= 10) return clean;
   return `${clean.slice(0, 6)}...${clean.slice(-4)}`;
 }
-
