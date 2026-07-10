@@ -323,6 +323,32 @@ section,
   gap: 10px;
 }
 
+.delete-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.status-check {
+  width: auto;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  border: 1px solid #dfe4df;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px 10px;
+  color: #344038;
+  font-weight: 700;
+}
+
+.status-check input {
+  width: 16px;
+  min-height: 16px;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);

@@ -504,6 +504,7 @@ function SendNotes() {
   const [notas, setNotas] = useState([]);
   const [logs, setLogs] = useState([]);
   const [status, setStatus] = useState('');
+  const [deleteStatuses, setDeleteStatuses] = useState(['erro']);
   const eventSourceRef = useRef(null);
 
   const statItems = useMemo(() => [
@@ -530,10 +531,22 @@ function SendNotes() {
     }
   }
 
-  async function deleteNotSent() {
-    const ok = window.confirm('Apagar notas pendentes, processando e com erro? As notas enviadas serao mantidas.');
+  function toggleDeleteStatus(nextStatus) {
+    setDeleteStatuses((current) => current.includes(nextStatus)
+      ? current.filter((item) => item !== nextStatus)
+      : [...current, nextStatus]);
+  }
+
+  async function deleteSelectedStatuses() {
+    if (!deleteStatuses.length) {
+      setStatus('Selecione pelo menos um status para apagar.');
+      return;
+    }
+
+    const label = deleteStatuses.join(', ');
+    const ok = window.confirm(`Apagar notas com status: ${label}? Essa acao nao pode ser desfeita.`);
     if (!ok) return;
-    await runAction(api.deleteNotSent, 'Apagar nao enviadas');
+    await runAction(() => api.deleteByStatuses(deleteStatuses), 'Apagar selecionadas');
   }
 
   useEffect(() => {
@@ -586,10 +599,23 @@ function SendNotes() {
           <RotateCcw aria-hidden="true" />
           Reprocessar erros
         </button>
-        <button onClick={deleteNotSent}>
+        <button onClick={deleteSelectedStatuses}>
           <Trash2 aria-hidden="true" />
-          Apagar nao enviadas
+          Apagar selecionadas
         </button>
+      </div>
+
+      <div className="delete-options">
+        {['pendente', 'processando', 'erro', 'enviada'].map((item) => (
+          <label className="status-check" key={item}>
+            <input
+              type="checkbox"
+              checked={deleteStatuses.includes(item)}
+              onChange={() => toggleDeleteStatus(item)}
+            />
+            {item}
+          </label>
+        ))}
       </div>
 
       {status && <p className="status-message">{status}</p>}

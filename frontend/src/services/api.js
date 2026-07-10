@@ -36,5 +36,8 @@ export const api = {
   stopAutomation: () => request('/api/automacao/stop', { method: 'POST' }),
   sendNext: () => request('/api/automacao/send-next', { method: 'POST' }),
   reprocessErrors: () => request('/api/automacao/reprocess-errors', { method: 'POST' }),
-  deleteNotSent: () => request('/api/notas/not-sent', { method: 'DELETE' })
+  deleteByStatuses: (statuses) => request('/api/notas/by-status', {
+    method: 'DELETE',
+    body: JSON.stringify({ statuses })
+  })
 };

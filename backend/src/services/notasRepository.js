@@ -118,10 +118,21 @@ export async function reprocessErrors() {
   return rowCount;
 }
 
-export async function deleteNotSentNotas() {
+export async function deleteNotasByStatuses(statuses) {
+  const allowed = new Set(['pendente', 'processando', 'enviada', 'erro']);
+  const selectedStatuses = [...new Set(statuses)].filter((status) => allowed.has(status));
+
+  if (!selectedStatuses.length) {
+    const error = new Error('Selecione pelo menos um status valido para apagar.');
+    error.status = 400;
+    error.publicMessage = error.message;
+    throw error;
+  }
+
   const { rowCount } = await query(
     `DELETE FROM notas_fiscais
-     WHERE status IN ('pendente', 'processando', 'erro')`
+     WHERE status = ANY($1::text[])`,
+    [selectedStatuses]
   );
   return rowCount;
 }

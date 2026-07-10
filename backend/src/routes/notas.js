@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
   createNota,
-  deleteNotSentNotas,
+  deleteNotasByStatuses,
   getNextPendente,
   listNotas,
   statsNotas,
@@ -43,10 +43,11 @@ router.get('/next', async (_req, res, next) => {
   }
 });
 
-router.delete('/not-sent', async (_req, res, next) => {
+router.delete('/by-status', async (req, res, next) => {
   try {
-    const total = await deleteNotSentNotas();
-    res.json({ ok: true, total });
+    const statuses = Array.isArray(req.body?.statuses) ? req.body.statuses : [];
+    const total = await deleteNotasByStatuses(statuses);
+    res.json({ ok: true, total, statuses });
   } catch (error) {
     next(error);
   }
