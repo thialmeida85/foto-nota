@@ -83,14 +83,16 @@ function CaptureNotes() {
       setConfirmed(!extracted.needsConfirmation);
 
       if (shouldUseAiFallback(extracted)) {
+        setKey('');
+        setTipo('DESCONHECIDO');
+        setNeedsConfirmation(false);
+        setConfirmed(false);
         setStatus('OCR nao encontrou uma chave confiavel. Tentando corrigir com IA...');
         try {
           await analyzeImageWithAi(text);
           return;
         } catch (aiError) {
-          setStatus(extracted.key
-            ? `OCR encontrou uma chave, mas a IA de backup falhou: ${aiError.message}. Confira antes de salvar.`
-            : `OCR e IA nao encontraram a chave: ${aiError.message}. Digite manualmente.`);
+          setStatus(`OCR e IA nao encontraram uma chave confiavel: ${aiError.message}. Digite manualmente.`);
           return;
         }
       }

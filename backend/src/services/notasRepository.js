@@ -1,5 +1,6 @@
 import { query } from './db.js';
 import { cleanKey } from '../utils/mask.js';
+import { isValidAccessKey } from '../utils/fiscalKey.js';
 
 export async function listNotas(status) {
   const params = [];
@@ -26,6 +27,13 @@ export async function createNota({ chave_nfe, tipo, origem = 'celular', ocr_text
   if (!chaveLimpa) {
     const error = new Error('A chave nao pode ficar vazia.');
     error.status = 400;
+    throw error;
+  }
+
+  if (['NFE', 'NFCE'].includes(tipo) && !isValidAccessKey(chaveLimpa)) {
+    const error = new Error('Chave NF-e/NFC-e invalida. Confira os 44 digitos antes de salvar.');
+    error.status = 400;
+    error.publicMessage = error.message;
     throw error;
   }
 
@@ -109,4 +117,3 @@ export async function reprocessErrors() {
   );
   return rowCount;
 }
-
