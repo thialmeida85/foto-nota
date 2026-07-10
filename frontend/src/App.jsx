@@ -81,7 +81,21 @@ function CaptureNotes() {
       setTipo(extracted.tipo);
       setNeedsConfirmation(extracted.needsConfirmation);
       setConfirmed(!extracted.needsConfirmation);
-      setStatus(extracted.key ? 'Chave encontrada. Confira antes de salvar.' : 'OCR nao encontrou uma chave. Digite manualmente.');
+
+      if (shouldUseAiFallback(extracted)) {
+        setStatus('OCR nao encontrou uma chave confiavel. Tentando corrigir com IA...');
+        try {
+          await analyzeImageWithAi(text);
+          return;
+        } catch (aiError) {
+          setStatus(extracted.key
+            ? `OCR encontrou uma chave, mas a IA de backup falhou: ${aiError.message}. Confira antes de salvar.`
+            : `OCR e IA nao encontraram a chave: ${aiError.message}. Digite manualmente.`);
+          return;
+        }
+      }
+
+      setStatus('Chave encontrada com OCR. Confira antes de salvar.');
     } catch (error) {
       setStatus(`Falha no OCR: ${error.message}`);
     } finally {
@@ -100,26 +114,30 @@ function CaptureNotes() {
     setStatus('Analisando imagem com IA...');
 
     try {
-      const imageDataUrl = await compressImageForAi(file);
-      const result = await api.analyzeWithGroq({
-        imageDataUrl,
-        ocrText
-      });
-
-      if (result.chave_nfe) setKey(result.chave_nfe);
-      if (result.tipo) setTipo(result.tipo);
-      setNeedsConfirmation(false);
-      setConfirmed(true);
-
-      const confidence = Math.round((result.confianca || 0) * 100);
-      setStatus(result.chave_nfe
-        ? `IA encontrou a chave com ${confidence}% de confianca. Confira antes de salvar.`
-        : 'IA nao encontrou uma chave com seguranca. Digite manualmente.');
+      await analyzeImageWithAi(ocrText);
     } catch (error) {
       setStatus(error.message);
     } finally {
       setLoading(false);
     }
+  }
+
+  async function analyzeImageWithAi(sourceOcrText) {
+    const imageDataUrl = await compressImageForAi(file);
+    const result = await api.analyzeWithGroq({
+      imageDataUrl,
+      ocrText: sourceOcrText
+    });
+
+    if (result.chave_nfe) setKey(result.chave_nfe);
+    if (result.tipo) setTipo(result.tipo);
+    setNeedsConfirmation(false);
+    setConfirmed(true);
+
+    const confidence = Math.round((result.confianca || 0) * 100);
+    setStatus(result.chave_nfe
+      ? `IA encontrou a chave com ${confidence}% de confianca. Confira antes de salvar.`
+      : 'IA nao encontrou uma chave com seguranca. Digite manualmente.');
   }
 
   async function saveNote() {
@@ -223,6 +241,14 @@ function CaptureNotes() {
       </div>
     </section>
   );
+}
+
+function shouldUseAiFallback(extracted) {
+  return !extracted.key
+    || extracted.needsConfirmation
+    || extracted.confidence === 'fallback-44-digits'
+    || extracted.confidence === 'possible-cfe'
+    || extracted.tipo === 'DESCONHECIDO';
 }
 
 function compressImageForAi(file) {
