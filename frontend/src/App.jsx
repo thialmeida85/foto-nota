@@ -90,6 +90,38 @@ function CaptureNotes() {
     }
   }
 
+  async function correctWithAi() {
+    if (!file) {
+      setStatus('Escolha ou tire uma foto primeiro.');
+      return;
+    }
+
+    setLoading(true);
+    setStatus('Analisando imagem com IA...');
+
+    try {
+      const imageDataUrl = await compressImageForAi(file);
+      const result = await api.analyzeWithGroq({
+        imageDataUrl,
+        ocrText
+      });
+
+      if (result.chave_nfe) setKey(result.chave_nfe);
+      if (result.tipo) setTipo(result.tipo);
+      setNeedsConfirmation(false);
+      setConfirmed(true);
+
+      const confidence = Math.round((result.confianca || 0) * 100);
+      setStatus(result.chave_nfe
+        ? `IA encontrou a chave com ${confidence}% de confianca. Confira antes de salvar.`
+        : 'IA nao encontrou uma chave com seguranca. Digite manualmente.');
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function saveNote() {
     const clean = key.replace(/\D/g, '');
     if (!clean) {
@@ -149,6 +181,9 @@ function CaptureNotes() {
             <Camera aria-hidden="true" />
             Ler nota
           </button>
+          <button onClick={correctWithAi} disabled={loading || !file}>
+            Corrigir com IA
+          </button>
         </div>
       </div>
 
@@ -188,6 +223,34 @@ function CaptureNotes() {
       </div>
     </section>
   );
+}
+
+function compressImageForAi(file) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const url = URL.createObjectURL(file);
+
+    image.onload = () => {
+      const maxSize = 1600;
+      const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(image.width * scale);
+      canvas.height = Math.round(image.height * scale);
+
+      const context = canvas.getContext('2d');
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Nao foi possivel preparar a imagem para IA.'));
+    };
+
+    image.src = url;
+  });
 }
 
 function SendNotes() {

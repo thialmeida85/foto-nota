@@ -27,10 +27,13 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(payload)
   }),
+  analyzeWithGroq: (payload) => request('/api/ocr/groq', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }),
   startAutomation: () => request('/api/automacao/start', { method: 'POST' }),
   pauseAutomation: () => request('/api/automacao/pause', { method: 'POST' }),
   stopAutomation: () => request('/api/automacao/stop', { method: 'POST' }),
   sendNext: () => request('/api/automacao/send-next', { method: 'POST' }),
   reprocessErrors: () => request('/api/automacao/reprocess-errors', { method: 'POST' })
 };
-

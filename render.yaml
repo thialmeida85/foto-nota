@@ -16,6 +16,10 @@ services:
         value: https://asin.notabe.com/notes/new
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: "0"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: meta-llama/llama-4-scout-17b-16e-instruct
 
   - type: web
     name: foto-notas-frontend

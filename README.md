@@ -86,6 +86,8 @@ Configuracao sugerida:
   - `NODE_ENV`: `production`
   - `NOTABE_URL`: `https://asin.notabe.com/notes/new`
   - `PLAYWRIGHT_BROWSERS_PATH`: `0`
+  - `GROQ_API_KEY`: chave da Groq para o botao `Corrigir com IA`
+  - `GROQ_MODEL`: `meta-llama/llama-4-scout-17b-16e-instruct`
 
 O backend escuta `0.0.0.0:$PORT`, como o Render espera.
 
@@ -137,6 +139,8 @@ Em producao o Chromium roda headless com:
 7. Toque em `Salvar nota`.
 
 O OCR roda no navegador com Tesseract.js. A imagem nao precisa ir para o backend.
+
+Se o OCR local encontrar a chave errada ou ficar inseguro, use `Corrigir com IA`. Nesse fluxo a imagem e comprimida no navegador, enviada ao backend e o backend chama a Groq Vision. A chave da Groq fica apenas no backend/Render.
 
 ## 7. Usar no Chromebook/computador
 
