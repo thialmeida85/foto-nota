@@ -491,6 +491,8 @@ class AutomationRunner {
       page.locator('input[placeholder*="chave" i]:visible').first(),
       page.locator('input[placeholder*="codigo" i][placeholder*="barras" i]:visible').first(),
       page.locator('input[placeholder*="código" i][placeholder*="barras" i]:visible').first(),
+      page.locator('input[placeholder*="códigos de barras" i]:visible').first(),
+      page.locator('input[placeholder*="codigos de barras" i]:visible').first(),
       page.locator('input[placeholder*="barras" i]:visible').first(),
       page.locator('input[placeholder*="nota" i]:visible').first(),
       page.locator('input[placeholder*="cupom" i]:visible').first(),
@@ -549,6 +551,18 @@ class AutomationRunner {
   async detectResult(page) {
     const body = await page.locator('body').innerText({ timeout: 8000 }).catch(() => '');
     const lowered = body.toLowerCase();
+    const lines = body
+      .split('\n')
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    const latestResultLine = lines.find((line) => /^(ok|repetida|erro\s+na\s+leitura)\b/i.test(line));
+    if (latestResultLine) {
+      if (/^erro\s+na\s+leitura\b/i.test(latestResultLine)) {
+        return { status: 'erro', message: latestResultLine.slice(0, 180) };
+      }
+      return { status: 'enviada', message: latestResultLine.slice(0, 180) };
+    }
 
     const errorPatterns = [
       'erro na leitura',
@@ -564,12 +578,13 @@ class AutomationRunner {
 
     for (const pattern of errorPatterns) {
       if (lowered.includes(pattern)) {
-        const line = body.split('\n').find((item) => item.toLowerCase().includes(pattern));
+        const line = lines.find((item) => item.toLowerCase().includes(pattern));
         return { status: 'erro', message: line?.slice(0, 180) || 'Site retornou erro.' };
       }
     }
 
     const successPatterns = [
+      'repetida',
       'sucesso',
       'enviada',
       'enviado',
@@ -618,7 +633,7 @@ async function firstExistingVisibleLocator(locators) {
 
 async function firstVisibleNonCnpjInput(page) {
   return page.evaluateHandle(() => {
-    const blockedPatterns = [/cnpj/i, /valor/i, /data/i, /\bdia\b/i, /\bcod\b/i];
+    const blockedPatterns = [/cnpj/i, /valor/i, /data/i, /\bdia\b/i, /\bcoo\b/i];
     const fields = [...document.querySelectorAll('input, textarea')]
       .filter((el) => {
         const rect = el.getBoundingClientRect();
@@ -636,6 +651,8 @@ async function firstVisibleNonCnpjInput(page) {
           el.closest('label')?.innerText,
           el.parentElement?.innerText
         ].filter(Boolean).join(' ');
+
+        if (/c[oó]d/i.test(attrs) && /barras/i.test(attrs)) return true;
 
         return !blockedPatterns.some((pattern) => pattern.test(attrs));
       })
