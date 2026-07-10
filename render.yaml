@@ -14,6 +14,10 @@ services:
         value: production
       - key: NOTABE_URL
         value: https://asin.notabe.com/notes/new
+      - key: NOTABE_USERNAME
+        sync: false
+      - key: NOTABE_PASSWORD
+        sync: false
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: "0"
       - key: GROQ_API_KEY

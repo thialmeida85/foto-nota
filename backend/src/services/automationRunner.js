@@ -108,6 +108,7 @@ class AutomationRunner {
       await page.goto(notabeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
+      await this.ensureLoggedIn(page);
       await this.guardAgainstManualBlocks(page);
 
       const input = await this.findPrimaryInput(page);
@@ -214,6 +215,106 @@ class AutomationRunner {
     }
   }
 
+  async ensureLoggedIn(page) {
+    if (!await this.looksLikeLoginPage(page)) return;
+
+    const username = process.env.NOTABE_USERNAME;
+    const password = process.env.NOTABE_PASSWORD;
+
+    if (!username || !password) {
+      this.pause('Login necessario. Configure NOTABE_USERNAME e NOTABE_PASSWORD no backend.');
+      throw new Error('Sessao expirada ou login necessario.');
+    }
+
+    addLog('Login NotaBe necessario. Tentando autenticar com credenciais configuradas.');
+
+    const usernameInput = await this.findLoginInput(page);
+    const passwordInput = await this.findPasswordInput(page);
+
+    if (!usernameInput || !passwordInput) {
+      this.pause('Tela de login detectada, mas campos de usuario/senha nao foram encontrados.');
+      throw new Error('Campos de login do NotaBe nao encontrados.');
+    }
+
+    await usernameInput.fill(username);
+    await passwordInput.fill(password);
+    await usernameInput.dispatchEvent('input');
+    await passwordInput.dispatchEvent('input');
+    await usernameInput.dispatchEvent('change');
+    await passwordInput.dispatchEvent('change');
+
+    const loginButton = await this.findLoginButton(page);
+    if (!loginButton) {
+      this.pause('Tela de login detectada, mas botao Entrar/Login nao foi encontrado.');
+      throw new Error('Botao de login do NotaBe nao encontrado.');
+    }
+
+    await Promise.allSettled([
+      page.waitForLoadState('networkidle', { timeout: 20000 }),
+      loginButton.click()
+    ]);
+
+    await page.waitForTimeout(2500);
+
+    if (await this.hasCaptcha(page)) {
+      this.pause('Captcha detectado no login. A automacao nao burla captcha.');
+      throw new Error('Captcha detectado no login.');
+    }
+
+    if (await this.looksLikeLoginPage(page)) {
+      this.pause('Login NotaBe nao concluido. Confira usuario, senha ou verificacao manual.');
+      throw new Error('Login NotaBe nao concluido.');
+    }
+
+    await page.goto(notabeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    addLog('Login NotaBe concluido.');
+  }
+
+  async looksLikeLoginPage(page) {
+    const passwordCount = await page.locator('input[type="password"]:visible').count().catch(() => 0);
+    if (passwordCount > 0) return true;
+
+    const text = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
+    const lowered = text.toLowerCase();
+    return lowered.includes('senha') && (lowered.includes('entrar') || lowered.includes('login'));
+  }
+
+  async hasCaptcha(page) {
+    const text = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
+    const lowered = text.toLowerCase();
+    return lowered.includes('captcha') || lowered.includes('recaptcha');
+  }
+
+  async findLoginInput(page) {
+    const locators = [
+      page.locator('input[type="email"]:visible').first(),
+      page.locator('input[name*="email" i]:visible').first(),
+      page.locator('input[name*="user" i]:visible').first(),
+      page.locator('input[name*="login" i]:visible').first(),
+      page.locator('input[autocomplete="username"]:visible').first(),
+      page.locator('input[type="text"]:visible').first(),
+      page.locator('input:not([type="password"]):visible').first()
+    ];
+
+    return firstExistingLocator(locators);
+  }
+
+  async findPasswordInput(page) {
+    return firstExistingLocator([
+      page.locator('input[type="password"]:visible').first(),
+      page.locator('input[name*="senha" i]:visible').first(),
+      page.locator('input[name*="password" i]:visible').first()
+    ]);
+  }
+
+  async findLoginButton(page) {
+    return firstExistingLocator([
+      page.getByRole('button', { name: /entrar|login|acessar|continuar/i }).first(),
+      page.locator('button:has-text("Entrar"), button:has-text("Login"), button:has-text("Acessar"), input[type="submit"]').first()
+    ]);
+  }
+
   async findPrimaryInput(page) {
     const locators = [
       page.locator('input[type="text"]:visible').first(),
@@ -268,5 +369,12 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export const automationRunner = new AutomationRunner();
+async function firstExistingLocator(locators) {
+  for (const locator of locators) {
+    if (await locator.count().catch(() => 0)) return locator;
+  }
 
+  return null;
+}
+
+export const automationRunner = new AutomationRunner();
