@@ -110,6 +110,7 @@ class AutomationRunner {
 
       await this.ensureLoggedIn(page);
       await this.guardAgainstManualBlocks(page);
+      await this.resolveCnpjStep(page);
       await this.navigateToSubmissionPage(page);
 
       const input = await this.findFiscalKeyInput(page);
@@ -313,6 +314,7 @@ class AutomationRunner {
       await page.waitForLoadState('networkidle', { timeout: 12000 }).catch(() => {});
       await page.waitForTimeout(1000);
       await this.guardAgainstManualBlocks(page);
+      await this.resolveCnpjStep(page);
 
       if (await this.isSubmissionPageReady(page)) return;
     }
@@ -330,6 +332,45 @@ class AutomationRunner {
     const input = await this.findFiscalKeyInput(page);
     const button = await this.findSendButton(page);
     return Boolean(input && button);
+  }
+
+  async resolveCnpjStep(page) {
+    if (!await this.looksLikeCnpjStep(page)) return;
+
+    const cnpj = cleanKey(process.env.NOTABE_CNPJ || '');
+    if (!cnpj) {
+      this.pause('NotaBe pediu CNPJ. Configure NOTABE_CNPJ no backend para continuar.');
+      throw new Error('Etapa de CNPJ detectada no NotaBe. Configure NOTABE_CNPJ.');
+    }
+
+    addLog('Etapa de CNPJ detectada. Preenchendo CNPJ configurado.');
+    const input = await this.findCnpjInput(page);
+    if (!input) {
+      throw new Error('Etapa de CNPJ detectada, mas campo CNPJ nao foi encontrado.');
+    }
+
+    await input.fill(cnpj);
+    await input.dispatchEvent('input');
+    await input.dispatchEvent('change');
+
+    const button = await firstExistingVisibleLocator([
+      page.getByRole('button', { name: /continuar|entrar|acessar|avancar|avançar|confirmar|enviar/i }).first(),
+      page.locator('button:has-text("Continuar"), button:has-text("Entrar"), button:has-text("Acessar"), button:has-text("Avançar"), button:has-text("Avancar"), button:has-text("Confirmar"), input[type="submit"]').first()
+    ]);
+
+    if (!button) {
+      throw new Error('Etapa de CNPJ detectada, mas botao para continuar nao foi encontrado.');
+    }
+
+    await Promise.allSettled([
+      page.waitForLoadState('networkidle', { timeout: 15000 }),
+      button.click()
+    ]);
+    await page.waitForTimeout(1200);
+
+    if (await this.looksLikeCnpjStep(page)) {
+      throw new Error('CNPJ nao foi aceito pelo NotaBe. Confira NOTABE_CNPJ.');
+    }
   }
 
   async clickVisibleByText(page, textRegex) {
@@ -365,6 +406,26 @@ class AutomationRunner {
     return lowered.includes('captcha') || lowered.includes('recaptcha');
   }
 
+  async looksLikeCnpjStep(page) {
+    const input = await this.findCnpjInput(page);
+    if (input) return true;
+
+    const text = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
+    const lowered = text.toLowerCase();
+    return lowered.includes('cnpj')
+      && !lowered.includes('chave de acesso')
+      && !lowered.includes('codigo da nota')
+      && !lowered.includes('código da nota');
+  }
+
+  async findCnpjInput(page) {
+    return firstExistingVisibleLocator([
+      page.locator('input[placeholder*="cnpj" i]:visible').first(),
+      page.locator('input[name*="cnpj" i]:visible').first(),
+      page.locator('input[id*="cnpj" i]:visible').first()
+    ]);
+  }
+
   async findLoginInput(page) {
     const locators = [
       page.locator('input[type="email"]:visible').first(),
@@ -395,20 +456,40 @@ class AutomationRunner {
   }
 
   async findFiscalKeyInput(page) {
+    const bodyText = await page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
+    const lowered = bodyText.toLowerCase();
+    const hasFiscalKeyContext = lowered.includes('chave')
+      || lowered.includes('código da nota')
+      || lowered.includes('codigo da nota')
+      || lowered.includes('cupom fiscal')
+      || lowered.includes('nota fiscal')
+      || lowered.includes('nf-e')
+      || lowered.includes('nfc-e');
+
     const targeted = [
       page.locator('input[placeholder*="chave" i]:visible').first(),
       page.locator('input[placeholder*="codigo" i]:visible').first(),
       page.locator('input[placeholder*="código" i]:visible').first(),
+      page.locator('input[placeholder*="nota" i]:visible').first(),
+      page.locator('input[placeholder*="cupom" i]:visible').first(),
       page.locator('input[name*="chave" i]:visible').first(),
       page.locator('input[name*="codigo" i]:visible').first(),
+      page.locator('input[name*="nota" i]:visible').first(),
+      page.locator('input[name*="cupom" i]:visible').first(),
       page.locator('textarea[placeholder*="chave" i]:visible').first(),
-      page.locator('textarea[placeholder*="codigo" i]:visible').first()
+      page.locator('textarea[placeholder*="codigo" i]:visible').first(),
+      page.locator('textarea[placeholder*="nota" i]:visible').first()
     ];
 
     const targetedInput = await firstExistingVisibleLocator(targeted);
     if (targetedInput) return targetedInput;
 
-    return this.findPrimaryInput(page);
+    if (!hasFiscalKeyContext) return null;
+
+    return firstExistingVisibleLocator([
+      page.locator('input[type="text"]:visible').first(),
+      page.locator('textarea:visible').first()
+    ]);
   }
 
   async findPrimaryInput(page) {
