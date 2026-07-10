@@ -452,6 +452,8 @@ class AutomationRunner {
 
   async findLoginInput(page) {
     const locators = [
+      page.getByLabel(/email/i).first(),
+      page.locator('label').filter({ hasText: /^email$/i }).locator('..').locator('input:visible').first(),
       page.locator('input[type="email"]:visible').first(),
       page.locator('input[name*="email" i]:visible').first(),
       page.locator('input[name*="user" i]:visible').first(),
@@ -466,6 +468,8 @@ class AutomationRunner {
 
   async findPasswordInput(page) {
     return firstExistingLocator([
+      page.getByLabel(/senha/i).first(),
+      page.locator('label').filter({ hasText: /^senha$/i }).locator('..').locator('input:visible').first(),
       page.locator('input[type="password"]:visible').first(),
       page.locator('input[name*="senha" i]:visible').first(),
       page.locator('input[name*="password" i]:visible').first()
@@ -474,6 +478,8 @@ class AutomationRunner {
 
   async findLoginButton(page) {
     return firstExistingLocator([
+      page.locator('form').getByRole('button', { name: /^entrar$/i }).first(),
+      page.locator('form button:has-text("Entrar"), form input[type="submit"]').first(),
       page.getByRole('button', { name: /entrar|login|acessar|continuar/i }).first(),
       page.locator('button:has-text("Entrar"), button:has-text("Login"), button:has-text("Acessar"), input[type="submit"]').first()
     ]);
