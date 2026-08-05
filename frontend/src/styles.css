@@ -239,30 +239,48 @@ h2 {
 
 .crop-box {
   position: absolute;
-  border: 3px solid #1f6f50;
-  border-radius: 8px;
-  background: rgba(31, 111, 80, 0.12);
-  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.28);
+  border: 2px solid #1f6f50;
   cursor: move;
   touch-action: none;
+  /* Efeito de dimmer para focar na seleção */
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
 }
 
-.crop-box::before,
-.crop-box::after {
-  content: "";
+.crop-guide {
   position: absolute;
-  left: 10px;
-  right: 10px;
+  top: 50%;
+  left: 0;
+  right: 0;
   height: 1px;
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.5);
+  border-top: 1px dashed rgba(0, 0, 0, 0.5);
 }
 
-.crop-box::before {
-  top: 33.333%;
+.crop-handle {
+  position: absolute;
+  background: #1f6f50;
+  border: 2px solid white;
+  border-radius: 50%;
 }
 
-.crop-box::after {
-  top: 66.666%;
+.crop-handle.resize-w {
+  /* Alça de largura */
+  top: 50%;
+  right: -8px;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  cursor: ew-resize;
+}
+
+.crop-handle.resize-h {
+  /* Alça de altura */
+  bottom: -8px;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  cursor: ns-resize;
 }
 
 label {

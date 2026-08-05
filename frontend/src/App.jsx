@@ -128,9 +128,7 @@ function CaptureNotes() {
   const [file, setFile] = useState(null);
   const [ocrText, setOcrText] = useState('');
   const [key, setKey] = useState('');
-  const [tipo, setTipo] = useState('DESCONHECIDO');
-  const [needsConfirmation, setNeedsConfirmation] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
+  const [tipo, setTipo] = useState('NFCE');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [crop, setCrop] = useState({ x: 0.06, y: 0.38, width: 0.88, height: 0.18 });
@@ -146,9 +144,8 @@ function CaptureNotes() {
     setImageUrl(URL.createObjectURL(selected));
     setOcrText('');
     setKey('');
+    setTipo('NFCE');
     setStatus('');
-    setNeedsConfirmation(false);
-    setConfirmed(false);
     setCrop({ x: 0.06, y: 0.38, width: 0.88, height: 0.18 });
     setRotation(0);
   }
@@ -159,42 +156,67 @@ function CaptureNotes() {
     setImageUrl('');
     setOcrText('');
     setKey('');
-    setTipo('DESCONHECIDO');
+    setTipo('NFCE');
     setStatus('');
-    setNeedsConfirmation(false);
-    setConfirmed(false);
     setCrop({ x: 0.06, y: 0.38, width: 0.88, height: 0.18 });
     setRotation(0);
   }
 
-  function startCropDrag(event) {
+  function startDrag(event, mode) {
+    event.preventDefault();
+    event.stopPropagation();
+
     const imageRect = getDisplayedImageRect();
     if (!imageRect) return;
+
+    const stage = cropStageRef.current;
+    if (!stage) return;
+
     dragRef.current = {
+      mode,
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       initialCrop: crop,
       rect: imageRect
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    stage.setPointerCapture(event.pointerId);
   }
 
-  function moveCrop(event) {
+  function handlePointerMove(event) {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
 
-    const nextX = drag.initialCrop.x + ((event.clientX - drag.startX) / drag.rect.width);
-    const nextY = drag.initialCrop.y + ((event.clientY - drag.startY) / drag.rect.height);
+    const deltaX = (event.clientX - drag.startX) / drag.rect.width;
+    const deltaY = (event.clientY - drag.startY) / drag.rect.height;
 
-    setCrop({
-      ...drag.initialCrop,
-      x: clamp(nextX, 0, 1 - drag.initialCrop.width),
-      y: clamp(nextY, 0, 1 - drag.initialCrop.height)
-    });
+    let { x, y, width, height } = drag.initialCrop;
+
+    switch (drag.mode) {
+      case 'move':
+        x += deltaX;
+        y += deltaY;
+        break;
+      case 'resize-w':
+        width += deltaX;
+        break;
+      case 'resize-h':
+        height += deltaY;
+        break;
+    }
+
+    const minSize = 0.05;
+    width = Math.max(minSize, width);
+    height = Math.max(minSize, height);
+    x = clamp(x, 0, 1 - width);
+    y = clamp(y, 0, 1 - height);
+    width = clamp(width, minSize, 1 - x);
+    height = clamp(height, minSize, 1 - y);
+
+    setCrop({ x, y, width, height });
   }
 
-  function stopCropDrag(event) {
+  function stopDrag(event) {
     if (dragRef.current?.pointerId === event.pointerId) {
       dragRef.current = null;
     }
@@ -264,9 +286,7 @@ function CaptureNotes() {
 
       if (shouldUseAiFallback(extracted)) {
         setKey('');
-        setTipo('DESCONHECIDO');
-        setNeedsConfirmation(false);
-        setConfirmed(false);
+        setTipo('NFCE');
         setStatus('OCR nao encontrou uma chave. Tentando corrigir com IA...');
         try {
           await analyzeImageWithAi(text);
@@ -275,9 +295,6 @@ function CaptureNotes() {
         }
       } else {
         setKey(extracted.key);
-        setTipo(extracted.tipo);
-        setNeedsConfirmation(extracted.needsConfirmation);
-        setConfirmed(!extracted.needsConfirmation);
         setStatus('Chave encontrada com OCR. Confira, edite ou corrija com IA antes de salvar.');
       }
     } catch (error) {
@@ -314,9 +331,6 @@ function CaptureNotes() {
     });
 
     if (result.chave_nfe) setKey(result.chave_nfe);
-    if (result.tipo) setTipo(result.tipo);
-    setNeedsConfirmation(false);
-    setConfirmed(true);
 
     const confidence = Math.round((result.confianca || 0) * 100);
     setStatus(result.chave_nfe
@@ -328,11 +342,6 @@ function CaptureNotes() {
     const clean = key.replace(/\D/g, '');
     if (!clean) {
       setStatus('A chave nao pode ficar vazia.');
-      return;
-    }
-
-    if (needsConfirmation && !confirmed) {
-      setStatus('Confirme o possivel CFe-SAT antes de salvar.');
       return;
     }
 
@@ -349,8 +358,6 @@ function CaptureNotes() {
       setStatus('Nota salva como pendente.');
       setKey('');
       setOcrText('');
-      setNeedsConfirmation(false);
-      setConfirmed(false);
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -374,7 +381,13 @@ function CaptureNotes() {
 
         {imageUrl && (
           <div className="preview-frame">
-            <div className="crop-stage" ref={cropStageRef}>
+            <div
+              className="crop-stage"
+              ref={cropStageRef}
+              onPointerMove={handlePointerMove}
+              onPointerUp={stopDrag}
+              onPointerCancel={stopDrag}
+            >
               <img
                 ref={imageRef}
                 src={imageUrl}
@@ -384,11 +397,12 @@ function CaptureNotes() {
               <div
                 className="crop-box"
                 style={cropStyle()}
-                onPointerDown={startCropDrag}
-                onPointerMove={moveCrop}
-                onPointerUp={stopCropDrag}
-                onPointerCancel={stopCropDrag}
-              />
+                onPointerDown={(e) => startDrag(e, 'move')}
+              >
+                <div className="crop-guide" />
+                <div className="crop-handle resize-w" onPointerDown={(e) => startDrag(e, 'resize-w')} />
+                <div className="crop-handle resize-h" onPointerDown={(e) => startDrag(e, 'resize-h')} />
+              </div>
             </div>
           </div>
         )}
@@ -438,19 +452,8 @@ function CaptureNotes() {
 
         <label>
           Tipo
-          <select value={tipo} onChange={(event) => setTipo(event.target.value)}>
-            <option value="NFCE">NF-e/NFC-e</option>
-            <option value="CFE_SAT">CFe-SAT</option>
-            <option value="DESCONHECIDO">Desconhecido</option>
-          </select>
+          <input value="NF-e/NFC-e" readOnly disabled />
         </label>
-
-        {needsConfirmation && (
-          <label className="checkbox-line">
-            <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-            Confirmo que este numero e um possivel CFe-SAT.
-          </label>
-        )}
 
         <button className="primary full" onClick={saveNote} disabled={loading}>
           Salvar nota

@@ -70,30 +70,34 @@ export async function extractNotaWithGroq({ imageDataUrl, ocrText = '' }) {
 }
 
 function buildPrompt(ocrText) {
-  return `
-Voce esta lendo uma foto de cupom fiscal brasileiro NFC-e/NF-e/CFe-SAT.
-Extraia SOMENTE dados visiveis na imagem. Nao invente.
+  return `Voce e um assistente de extracao de dados especializado em cupons fiscais brasileiros.
+Sua tarefa e analisar a imagem de um cupom fiscal e extrair as informacoes solicitadas, retornando-as ESTRITAMENTE no formato JSON.
 
-Prioridade maxima:
-- chave de acesso de 44 digitos da NF-e/NFC-e;
-- se houver QR Code textual, use o parametro p= antes do primeiro |;
-- nao confunda codigo de produto, valor, data, numero da nota ou serie com chave de acesso.
+REGRAS IMPORTANTES:
+1. Extraia SOMENTE dados visiveis na imagem. Nao invente ou infira informacoes.
+2. Sua resposta DEVE ser um unico objeto JSON valido, sem nenhum texto, comentario ou \`\`\`json markdown\`\`\` antes ou depois.
+3. Se uma informacao nao for encontrada, use uma string vazia "" para campos de texto ou 0.0 para o campo de confianca.
 
-Retorne apenas JSON neste formato:
+FOCO PRINCIPAL:
+- A "chave de acesso" (chave_nfe) de 44 digitos e a informacao mais importante.
+- Se houver um QR Code com texto, a chave geralmente esta no parametro "p=" antes do primeiro caractere "|".
+- Nao confunda a chave de acesso com outros codigos (produto, COO, etc.).
+
+Formato de saida JSON esperado:
 {
-  "chave_nfe": "string com 44 digitos ou vazio",
-  "tipo": "NFE|NFCE|CFE_SAT|DESCONHECIDO",
-  "numero": "string ou vazio",
-  "serie": "string ou vazio",
-  "data_emissao": "YYYY-MM-DD ou vazio",
-  "valor_total": "numero decimal com ponto ou vazio",
-  "confianca": 0.0,
-  "observacao": "string curta"
+  "chave_nfe": "string contendo exatamente 44 digitos, ou string vazia",
+  "tipo": "string, um de: 'NFCE', 'CFE_SAT', 'NFE', ou 'DESCONHECIDO'",
+  "numero": "string contendo o numero da nota, ou string vazia",
+  "serie": "string contendo a serie da nota, ou string vazia",
+  "data_emissao": "string no formato 'YYYY-MM-DD', ou string vazia",
+  "valor_total": "string contendo o valor total com ponto como separador decimal (ex: '123.45'), ou string vazia",
+  "confianca": "numero de 0.0 a 1.0 indicando sua confianca na extracao da chave_nfe",
+  "observacao": "string curta com qualquer observacao relevante (ex: 'Imagem borrada'), ou string vazia"
 }
 
-Texto OCR local, se ajudar:
-${String(ocrText || '').slice(0, 4000)}
-`.trim();
+O texto abaixo foi extraido via OCR e pode conter erros. Use-o como apoio, mas priorize a imagem.
+Texto OCR:
+${String(ocrText || 'Nenhum').slice(0, 4000)}`.trim();
 }
 
 function normalizeGroqResult(result) {
