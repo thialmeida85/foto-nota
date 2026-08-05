@@ -29,7 +29,7 @@ services:
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_MODEL
-        value: meta-llama/llama-4-scout-17b-16e-instruct
+        value: qwen/qwen3.6-27b
 
   - type: web
     name: foto-notas-frontend

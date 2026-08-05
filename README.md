@@ -92,7 +92,7 @@ Configuracao sugerida:
   - `NOTABE_PASSWORD`: senha do NotaBe
   - `PLAYWRIGHT_BROWSERS_PATH`: `0`
   - `GROQ_API_KEY`: chave da Groq para o botao `Corrigir com IA`
-  - `GROQ_MODEL`: `meta-llama/llama-4-scout-17b-16e-instruct`
+  - `GROQ_MODEL`: `qwen/qwen3.6-27b`
 
 O backend escuta `0.0.0.0:$PORT`, como o Render espera.
 

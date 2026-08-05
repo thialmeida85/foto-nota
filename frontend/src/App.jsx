@@ -261,27 +261,25 @@ function CaptureNotes() {
       const text = result.data.text || '';
       const extracted = extractFiscalKey(text);
       setOcrText(text);
-      setKey(extracted.key);
-      setTipo(extracted.tipo);
-      setNeedsConfirmation(extracted.needsConfirmation);
-      setConfirmed(!extracted.needsConfirmation);
 
       if (shouldUseAiFallback(extracted)) {
         setKey('');
         setTipo('DESCONHECIDO');
         setNeedsConfirmation(false);
         setConfirmed(false);
-        setStatus('OCR nao encontrou uma chave confiavel. Tentando corrigir com IA...');
+        setStatus('OCR nao encontrou uma chave. Tentando corrigir com IA...');
         try {
           await analyzeImageWithAi(text);
-          return;
         } catch (aiError) {
-          setStatus(`OCR e IA nao encontraram uma chave confiavel: ${aiError.message}. Digite manualmente.`);
-          return;
+          setStatus(`OCR e IA nao encontraram uma chave: ${aiError.message}. Digite manualmente.`);
         }
+      } else {
+        setKey(extracted.key);
+        setTipo(extracted.tipo);
+        setNeedsConfirmation(extracted.needsConfirmation);
+        setConfirmed(!extracted.needsConfirmation);
+        setStatus('Chave encontrada com OCR. Confira, edite ou corrija com IA antes de salvar.');
       }
-
-      setStatus('Chave encontrada com OCR. Confira antes de salvar.');
     } catch (error) {
       setStatus(`Falha no OCR: ${error.message}`);
     } finally {
@@ -465,11 +463,9 @@ function CaptureNotes() {
 }
 
 function shouldUseAiFallback(extracted) {
-  return !extracted.key
-    || extracted.needsConfirmation
-    || extracted.confidence === 'fallback-44-digits'
-    || extracted.confidence === 'possible-cfe'
-    || extracted.tipo === 'DESCONHECIDO';
+  // Apenas aciona o fallback automatico para IA se o OCR nao encontrou NENHUMA chave.
+  // Se encontrou algo, mesmo que de baixa confianca, o usuario deve ter a chance de ver.
+  return !extracted.key;
 }
 
 function prepareImageForRecognition(file, crop, rotation, options = { output: 'blob' }) {
@@ -529,27 +525,47 @@ function prepareImageForRecognition(file, crop, rotation, options = { output: 'b
 }
 
 function enhanceReceiptCrop(context, width, height) {
+  // This function applies filters to the cropped image to improve OCR accuracy,
+  // especially for faded thermal paper receipts.
   const imageData = context.getImageData(0, 0, width, height);
   const { data } = imageData;
-  let total = 0;
+  const grayscale = new Uint8ClampedArray(width * height);
+  let totalLuminance = 0;
 
-  for (let index = 0; index < data.length; index += 4) {
-    const luminance = (data[index] * 0.299) + (data[index + 1] * 0.587) + (data[index + 2] * 0.114);
-    total += luminance;
+  // 1. Convert to grayscale and calculate average luminance
+  for (let i = 0; i < data.length; i += 4) {
+    const luminance = (data[i] * 0.299) + (data[i + 1] * 0.587) + (data[i + 2] * 0.114);
+    grayscale[i / 4] = luminance;
+    totalLuminance += luminance;
   }
 
-  const mean = total / (data.length / 4);
-  const threshold = clamp(mean - 22, 88, 178);
+  // 2. Apply a sharpening filter to make character edges more distinct.
+  // We read from `grayscale` and write to `sharpened` to avoid modifying data in place.
+  const sharpened = new Uint8ClampedArray(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      // Handle image edges by not applying the filter
+      if (y === 0 || y === height - 1 || x === 0 || x === width - 1) {
+        sharpened[i] = grayscale[i];
+        continue;
+      }
+      // 3x3 sharpening kernel: [0, -1, 0, -1, 5, -1, 0, -1, 0]
+      const sharpenedVal = 5 * grayscale[i] -
+        (grayscale[i - width] + grayscale[i + width] + grayscale[i - 1] + grayscale[i + 1]);
+      sharpened[i] = clamp(sharpenedVal, 0, 255);
+    }
+  }
 
-  for (let index = 0; index < data.length; index += 4) {
-    const luminance = (data[index] * 0.299) + (data[index + 1] * 0.587) + (data[index + 2] * 0.114);
-    const contrasted = clamp(((luminance - 128) * 1.75) + 128, 0, 255);
-    const value = contrasted < threshold ? 0 : 255;
+  // 3. Binarize the sharpened image using an adaptive threshold.
+  const mean = totalLuminance / (width * height);
+  const threshold = clamp(mean - 15, 100, 150); // A more forgiving threshold for faded text
 
-    data[index] = value;
-    data[index + 1] = value;
-    data[index + 2] = value;
-    data[index + 3] = 255;
+  for (let i = 0; i < data.length; i += 4) {
+    const value = sharpened[i / 4] < threshold ? 0 : 255;
+    data[i] = value;
+    data[i + 1] = value;
+    data[i + 2] = value;
   }
 
   context.putImageData(imageData, 0, 0);

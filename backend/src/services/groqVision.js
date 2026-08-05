@@ -1,4 +1,4 @@
-const defaultModel = 'meta-llama/llama-4-scout-17b-16e-instruct';
+const defaultModel = 'qwen/qwen3.6-27b';
 
 export async function extractNotaWithGroq({ imageDataUrl, ocrText = '' }) {
   if (!process.env.GROQ_API_KEY) {
@@ -22,7 +22,7 @@ export async function extractNotaWithGroq({ imageDataUrl, ocrText = '' }) {
     body: JSON.stringify({
       model: process.env.GROQ_MODEL || defaultModel,
       temperature: 0,
-      max_completion_tokens: 900,
+      max_tokens: 1024,
       response_format: { type: 'json_object' },
       messages: [
         {

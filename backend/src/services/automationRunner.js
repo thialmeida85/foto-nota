@@ -123,12 +123,10 @@ class AutomationRunner {
       const button = await this.findSendButton(page);
       if (!button) throw new Error('Botao Envia nao encontrado.');
 
-      await Promise.allSettled([
-        page.waitForLoadState('networkidle', { timeout: 20000 }),
-        button.click()
-      ]);
-
-      await page.waitForTimeout(2500);
+      // Inicia a espera pelo carregamento da rede ANTES de clicar, para aguardar a página estabilizar após o envio.
+      const submissionPromise = page.waitForLoadState('networkidle', { timeout: 20000 });
+      await button.click();
+      await submissionPromise.catch(() => addLog('A pagina nao ficou inativa apos o envio, continuando para detectar o resultado.'));
       await this.guardAgainstManualBlocks(page);
 
       const result = await this.detectResult(page);
@@ -262,12 +260,10 @@ class AutomationRunner {
       throw new Error('Botao de login do NotaBe nao encontrado.');
     }
 
-    await Promise.allSettled([
-      page.waitForLoadState('networkidle', { timeout: 20000 }),
-      loginButton.click()
-    ]);
-
-    await page.waitForTimeout(2500);
+    // Inicia a espera pelo carregamento da rede ANTES de clicar, para aguardar a página estabilizar após o login.
+    const navigationPromise = page.waitForLoadState('networkidle', { timeout: 20000 });
+    await loginButton.click();
+    await navigationPromise.catch(() => addLog('A pagina nao ficou inativa apos o login, continuando a verificacao.'));
 
     if (await this.hasCaptcha(page)) {
       this.pause('Captcha detectado no login. A automacao nao burla captcha.');
@@ -299,11 +295,10 @@ class AutomationRunner {
     }
 
     addLog('Home do NotaBe sem login. Clicando em Entrar.');
-    await Promise.allSettled([
-      page.waitForLoadState('networkidle', { timeout: 15000 }),
-      entryPoint.click()
-    ]);
-    await page.waitForTimeout(1200);
+    const navigationPromise = page.waitForLoadState('networkidle', { timeout: 15000 });
+    await entryPoint.click();
+    // Aguarda a página carregar após o clique, com tolerância a timeout.
+    await navigationPromise.catch(() => addLog('A pagina nao ficou inativa apos clicar em Entrar, continuando.'));
   }
 
   async navigateToSubmissionPage(page) {
@@ -372,11 +367,10 @@ class AutomationRunner {
     if (!cfeSatButton) return;
 
     addLog('Selecionando modo CFe-SAT no NotaBe.');
-    await Promise.allSettled([
-      page.waitForLoadState('networkidle', { timeout: 8000 }),
-      cfeSatButton.click()
-    ]);
-    await page.waitForTimeout(500);
+    const navigationPromise = page.waitForLoadState('networkidle', { timeout: 8000 });
+    await cfeSatButton.click();
+    // Aguarda a página estabilizar após o clique, com tolerância a timeout.
+    await navigationPromise.catch(() => addLog('A pagina nao ficou inativa apos selecionar CFe-SAT, continuando.'));
   }
 
   async ensureBarcodeMode(page) {
@@ -389,11 +383,10 @@ class AutomationRunner {
     if (!barcodeButton) return;
 
     addLog('Selecionando entrada por codigo de barras no NotaBe.');
-    await Promise.allSettled([
-      page.waitForLoadState('networkidle', { timeout: 8000 }),
-      barcodeButton.click()
-    ]);
-    await page.waitForTimeout(500);
+    const navigationPromise = page.waitForLoadState('networkidle', { timeout: 8000 });
+    await barcodeButton.click();
+    // Aguarda a página estabilizar após o clique, com tolerância a timeout.
+    await navigationPromise.catch(() => addLog('A pagina nao ficou inativa apos selecionar Cod. Barras, continuando.'));
   }
 
   async clickVisibleByText(page, textRegex) {
@@ -549,11 +542,25 @@ class AutomationRunner {
   }
 
   async detectResult(page) {
-    for (let attempt = 0; attempt < 8; attempt += 1) {
+    // Wait for a potential result element to appear using a robust selector.
+    // This is more reliable than a loop with fixed timeouts.
+    const anyResultIndicator = [
+      'td.result.label-success', '.result.label-success',
+      'td.result.label-danger', '.result.label-danger',
+      'td.result.label-warning', '.result.label-warning',
+      'td.result', '.result',
+      '[class*="success"]', '[class*="danger"]', '[class*="error"]', '[class*="alert"]'
+    ].join(', ');
+
+    try {
+      // Wait up to 8 seconds for any of the result indicators to become visible.
+      await page.waitForSelector(anyResultIndicator, { state: 'visible', timeout: 8000 });
+
+      // Now that an indicator is visible, try to parse the specific result.
       const explicitResult = await this.readExplicitNotabeResult(page);
       if (explicitResult) return explicitResult;
-
-      if (attempt < 7) await page.waitForTimeout(1000);
+    } catch (error) {
+      addLog('Nenhum elemento de resultado explícito encontrado, verificando texto geral da página.');
     }
 
     const body = await page.locator('body').innerText({ timeout: 8000 }).catch(() => '');
